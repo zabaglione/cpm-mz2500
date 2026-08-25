@@ -29,6 +29,7 @@ sys.path.insert(0, str(PROJECT / "tools"))
 
 import disk_geometry as dg  # noqa: E402
 import cpmfs  # noqa: E402
+import fetch_tools  # noqa: E402
 
 TOTAL_BLOCKS = 87648
 BLOCK = 256
@@ -100,11 +101,24 @@ def build(output: pathlib.Path, with_files: bool, bootable: bool) -> None:
                                        dg.SASI_BASE_D, None)
     image[TABLE_LBA * BLOCK:(TABLE_LBA + 1) * BLOCK] = table
 
-    for base, inject in ((dg.SASI_BASE_C, with_files), (dg.SASI_BASE_D, False)):
+    def add_group(fs, group):
+        added = 0
+        for path in fetch_tools.group_files(group):
+            if path.is_file():
+                fs.add_file(path.name, path.read_bytes())
+                added += 1
+        if added == 0:
+            print(f"note: tool group {group} not fetched "
+                  "(run tools/fetch_tools.py) - image built without it")
+        return added
+
+    for base, role in ((dg.SASI_BASE_C, "system"), (dg.SASI_BASE_D, "langs")):
         fs = cpmfs.CpmFilesystem(
             cpmfs.FlatCpmAdapter(image, dg.SASI, base=base * BLOCK))
         fs.format()
-        if inject:
+        if not with_files:
+            continue
+        if role == "system":
             vendor = PROJECT / "vendor" / "cpm22" / "bin"
             for name in ("PIP.COM", "STAT.COM", "ED.COM", "ASM.COM",
                          "DDT.COM", "SUBMIT.COM", "DUMP.COM", "LOAD.COM",
@@ -115,6 +129,10 @@ def build(output: pathlib.Path, with_files: bool, bootable: bool) -> None:
             putsys = PROJECT / "build" / "putsys.com"
             if putsys.is_file():
                 fs.add_file("PUTSYS.COM", putsys.read_bytes())
+            add_group(fs, "DEV")        # MAC/RMAC/LINK/LIB/XREF/ZSID
+        else:
+            for group in ("PASCAL", "PLI", "BASIC", "BDSC"):
+                add_group(fs, group)    # the language suites live on D:
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(image)

@@ -24,6 +24,19 @@
     ハードディスク運用でウォームブート毎にフロッピーが回るのを防ぐため。
     カレントドライブがA:のときの挙動はストックと同一）
 
+## 言語/開発ツール群（`tools/fetch_tools.py` がSHA256検証付きでダウンロード）
+- **DRI製品** — MAC、RMAC/LINK/LIB/XREF/Z80.LIB、ZSID、Pascal/MT+ 5.6.1、
+  PL/I-80 1.4、CBASIC 2.8。いずれも
+  [The Unofficial CP/M Web Site](http://www.cpm.z80.de/) 掲載の配布物で、
+  上記 2022-07-07 DRDOS, Inc. 許諾（"CP/M and its derivatives"）の
+  傘の下にあります。
+- **BDS C 1.60** — 作者 Leor Zolman 氏が2002-09-20にパブリックドメイン化
+  （[bdsoft.com](https://www.bdsoft.com/resources/bdsc.html) 掲載の声明:
+  "I, Leor Zolman, hereby release all rights to BDS C ... into the
+  Public Domain"）。
+- 各配布アーカイブから必要ファイルのみ抽出します（一覧と入手元URL・
+  SHA256は `tools/fetch_tools.py` が単一情報源）。
+
 ## コンソールフォント
 - [dhepper/font8x8](https://github.com/dhepper/font8x8) —
   Daniel Hepper / Marcel Sondaar / IBM PD VGA font 系譜、パブリックドメイン。

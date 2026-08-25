@@ -210,14 +210,23 @@ def build_disk(output: pathlib.Path, with_files: bool) -> None:
     print(f"wrote {output} ({injected} DRI files injected)")
 
 
-def build_data_disk(output: pathlib.Path) -> None:
-    """A CP/M-formatted 2DD with no system tracks: a fresh B: disk."""
+def build_data_disk(output: pathlib.Path, groups: tuple[str, ...] = ()) -> None:
+    """A CP/M-formatted 2DD with no system tracks; optionally carrying
+    tool groups so real machines can PIP them onto the hard disk."""
+    import fetch_tools
     image = make_blank_d88("CPMDATA")
     fs = cpmfs.CpmFilesystem(cpmfs.D88CpmAdapter(image, dg.FD))
     fs.format()
+    count = 0
+    for group in groups:
+        for path in fetch_tools.group_files(group):
+            if path.is_file():
+                fs.add_file(path.name, path.read_bytes())
+                count += 1
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(image.data)
-    print(f"wrote {output} (formatted, empty)")
+    label = f"{count} files" if groups else "formatted, empty"
+    print(f"wrote {output} ({label})")
 
 
 def main() -> int:
@@ -227,8 +236,19 @@ def main() -> int:
                         help="skip the DRI utility injection")
     parser.add_argument("--data-disk", action="store_true",
                         help="build a formatted, system-less data disk instead")
+    parser.add_argument("--collection", choices=["tools", "langs1", "langs2"],
+                        help="data disk carrying tool groups (implies "
+                             "--data-disk): tools=DEV+CBASIC, "
+                             "langs1=Pascal/MT+, langs2=PL/I-80+BDS C")
     args = parser.parse_args()
-    if args.data_disk:
+    collections = {
+        "tools": ("DEV", "BASIC"),
+        "langs1": ("PASCAL",),
+        "langs2": ("PLI", "BDSC"),
+    }
+    if args.collection:
+        build_data_disk(pathlib.Path(args.output), collections[args.collection])
+    elif args.data_disk:
         build_data_disk(pathlib.Path(args.output))
     else:
         build_disk(pathlib.Path(args.output), not args.no_files)
