@@ -90,7 +90,9 @@ Pascal/MT+でMZ-2500自身にコンパイルさせる**モードです。スク�
 ソースをMT+向けに機械変換し、コンパイラごと1枚のディスクに載せます:
 
 ```
-python3 tools/make_game_disk.py 2048    # → build/2048.d88
+python3 tools/make_game_disk.py 2048       # → build/2048.d88
+python3 tools/make_game_disk.py balls      # → build/balls.d88
+python3 tools/make_game_disk.py evas10n    # → build/evas10n.d88
 ```
 
 起動したら一度だけ:
@@ -108,6 +110,22 @@ G2048.COMはディスクに残るので、ビルドは初回のみです（ブ�
 
 [ivang78/cpm-games](https://github.com/ivang78/cpm-games)収載の
 CP/M版2048。盤面サイズは4か5を選択、W/A/S/D移動、Rで新規、ESCで終了。
+タイルは段位ごとに色分けされます。
+
+### Balls — `SUBMIT MAKE` → `BALLS`
+
+同じくivang78収載のカラーボールパズル（5個並べると消える系）。
+W/A/S/Dでカーソル/ボール移動、SPACEで掴む・置く、ESCで終了。
+白い盤面の上を5色のボールが転がります。
+
+### EVAS10N — `SUBMIT MAKE` → `EVAS10N`
+
+[Marco's Retrobits作のブロック崩し](https://github.com/marcosretrobits/EVAS10N.PAS)の
+ivang78 ANSI版。起動時の端末選択は1（ANSI）でカラー表示。
+z=左、x=右、qで終了。5色のレンガ帯を打ち抜いて脱出（Free!）を目指します。
+
+いずれもコンパイル済みの.COMはディスクに残るため、2回目以降は
+コマンド名を打つだけで起動します。
 
 **Zork I**（Infocom, 1982）— CP/M版（Release 25）が本機で動作すること
 を確認済みです（文章解析・データファイル読込とも問題なし）。ただし
@@ -140,4 +158,9 @@ python3 tools/make_game_disk.py --local ZORK1.COM ZORK1.DAT --output build/zork1
   「フロッピーを入れ替えるとき」）
 - 画面が乱れるソフトは、そのソフトの端末設定を
   **ADM-3A → TeleVideo 912/920 → VT-100(ANSI)** の優先順で選んで
-  ください。本機のコンソールはこの3系統の制御コードを解釈します
+  ください。本機のコンソールはこの3系統の制御コードを解釈し、
+  ANSIカラー（文字色8色。背景色は文字色が白/黒のとき反転表示で近似）
+  にも対応しています
+- ゲーム中のキーがたまに効かないときは、もう一度押してください
+  （画面描画の最中に押されたキーはCP/M 2.2のBDOSが読み捨てることが
+  あります。当時からの仕様です）

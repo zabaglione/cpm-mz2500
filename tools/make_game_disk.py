@@ -185,17 +185,18 @@ END;
 FUNCTION KEYPRESSED: BOOLEAN;
 BEGIN
   RNDSEED := RNDSEED + 1;
-  KEYPRESSED := @BDOS(11, 0) <> 0;
+  IF KEYBUF = 0 THEN KEYBUF := @BDOS(6, 255);
+  KEYPRESSED := KEYBUF <> 0;
 END;
 
 FUNCTION READKEY: CHAR;
-VAR K: INTEGER;
 BEGIN
-  REPEAT
+  WHILE KEYBUF = 0 DO BEGIN
     RNDSEED := RNDSEED + 1;
-    K := @BDOS(6, 255);
-  UNTIL K <> 0;
-  READKEY := CHR(K);
+    KEYBUF := @BDOS(6, 255);
+  END;
+  READKEY := CHR(KEYBUF);
+  KEYBUF := 0;
 END;
 
 PROCEDURE RANDOMIZE;
@@ -218,6 +219,28 @@ BEGIN
     UPCASE := CHR(ORD(C) - 32)
   ELSE
     UPCASE := C;
+END;
+
+FUNCTION BAND8(A, B: INTEGER): INTEGER;
+VAR R, M, I: INTEGER;
+BEGIN
+  R := 0; M := 1;
+  FOR I := 1 TO 8 DO BEGIN
+    IF ODD(A) AND ODD(B) THEN R := R + M;
+    A := A DIV 2; B := B DIV 2; M := M + M;
+  END;
+  BAND8 := R;
+END;
+
+FUNCTION BOR8(A, B: INTEGER): INTEGER;
+VAR R, M, I: INTEGER;
+BEGIN
+  R := 0; M := 1;
+  FOR I := 1 TO 8 DO BEGIN
+    IF ODD(A) OR ODD(B) THEN R := R + M;
+    A := A DIV 2; B := B DIV 2; M := M + M;
+  END;
+  BOR8 := R;
 END;
 
 PROCEDURE DELAY(MS: INTEGER);
@@ -244,6 +267,7 @@ label 99;
 const
 """ + SHIM_CONSTS + """var
   RNDSEED: integer;
+  KEYBUF: integer;
   terminal: byte;
   d,x,y,i,j,a,z: byte;
   f: array[0..16,0..16] of integer;
@@ -303,6 +327,249 @@ const
 
 
 
+
+def shared_renames(text: str) -> str:
+    """Renames every converted game needs (7-char-unique shim symbols)."""
+    text = text.replace("SetTextColor(", "COLORFG(")
+    text = text.replace("SetTextBg(", "COLORBG(")
+    text = text.replace("CursorOff", "CURSOFF")
+    text = text.replace("CursorOn", "CURSON")
+    text = text.replace("write(#7)", "write(chr(7))")
+    return text
+
+
+def convert_balls(text: str) -> str:
+    head = """program balls;
+label 97;
+const
+  FSM=15;
+  FSC=225;
+""" + SHIM_CONSTS + """type str2=string[2];
+var
+  RNDSEED: integer;
+  KEYBUF: integer;
+  terminal: byte;
+  ri: integer;
+  x,y,i,fs,mc,pl,z:byte;
+  f:array[1..FSM,1..FSM] of byte;
+  c:char;
+  bs:boolean;
+  qf:boolean;
+  sc,m:integer;
+
+""" + SHIM_PROCS
+    body = text[text.index("{$I CPM.INC}") + len("{$I CPM.INC}\n"):]
+    body = shared_renames(body)
+    body = body.replace("$80", "128").replace("$40", "64")
+    body = body.replace("$20", "32").replace("$10", "16")
+    body = body.replace("f[xx,yy]:=f[xx,yy] or fl;",
+                        "f[xx,yy]:=BOR8(f[xx,yy],fl);")
+    body = body.replace("if (f[x,y] and fl)>0 then drwb(x,y,s);",
+                        "if BAND8(f[x,y],fl)>0 then drwb(x,y,s);")
+    for bit in ("128", "64", "32", "16"):
+        body = body.replace(f"then fl:=fl or {bit};",
+                            f"then fl:=BOR8(fl,{bit});")
+    body = body.replace("    f[x,y]:=f[x,y] or fl;",
+                        "    f[x,y]:=BOR8(f[x,y],fl);")
+    body = body.replace("for x:=1 to FS do for y:=1 to FS do if (f[x,y] and fl)>0 then begin",
+                        "for x:=1 to FS do for y:=1 to FS do if BAND8(f[x,y],fl)>0 then begin")
+    body = body.replace("do f[x,y]:=f[x,y] and 7;",
+                        "do f[x,y]:=BAND8(f[x,y],7);")
+    body = body.replace("c:=#27;", "c:=chr(27);")
+    body = body.replace("until c=#27", "until c=chr(27)")
+    # ISO: for-control variables cannot be formal parameters (chk's x,y)
+    body = body.replace(
+        "function chk(x,y:byte):boolean;\nvar fl,i:byte;\n  b:boolean;\nbegin",
+        "function chk(x,y:byte):boolean;\nvar fl,i:byte;\n  b:boolean;\n"
+        "  lx,ly:byte;\nbegin")
+    body = body.replace(
+        "    for x:=1 to FS do for y:=1 to FS do if BAND8(f[x,y],fl)>0 then begin\n"
+        "      f[x,y]:=0;i:=i+1;\n"
+        "      updb(x,y);\n"
+        "    end;",
+        "    for lx:=1 to FS do for ly:=1 to FS do if BAND8(f[lx,ly],fl)>0 then begin\n"
+        "      f[lx,ly]:=0;i:=i+1;\n"
+        "      updb(lx,ly);\n"
+        "    end;")
+    body = body.replace(
+        "  for x:=1 to FS do for y:=1 to FS do f[x,y]:=BAND8(f[x,y],7);\nend;",
+        "  for lx:=1 to FS do for ly:=1 to FS do f[lx,ly]:=BAND8(f[lx,ly],7);\nend;")
+    # 'exit' statements need labels in MT+
+    body = body.replace(
+        "function addb:boolean;\nvar x,y,i,n:byte;",
+        "function addb:boolean;\nlabel 88;\nvar x,y,i,n:byte;")
+    body = body.replace("  if n=0 then exit;", "  if n=0 then goto 88;")
+    body = body.replace(
+        "  b:=chk(x,y);\n  addb:=true;\nend;",
+        "  b:=chk(x,y);\n  addb:=true;\n88:\nend;")
+    body = body.replace(
+        "procedure add3;\nvar x,y,n:byte;\nbegin",
+        "procedure add3;\nlabel 88;\nvar x,y,n:byte;\nbegin")
+    body = body.replace("    if n>0 then exit;", "    if n>0 then goto 88;")
+    body = body.replace(
+        "  gotoxy(1,FS+5); write('Game Over!');\n  c:=chr(27);\nend;",
+        "  gotoxy(1,FS+5); write('Game Over!');\n  c:=chr(27);\n88:\nend;")
+    body = body.replace(
+        "procedure mvm(dx,dy:integer);\nvar xx,yy,i:integer;\n  b,b1:boolean;\nbegin",
+        "procedure mvm(dx,dy:integer);\nlabel 88;\nvar xx,yy,i:integer;\n"
+        "  b,b1:boolean;\nbegin")
+    body = body.replace(
+        "        unmark;\n        x:=xx; y:=yy; mark;\n        exit;",
+        "        unmark;\n        x:=xx; y:=yy; mark;\n        goto 88;")
+    body = body.replace(
+        "  until b1=false;\n  write(chr(7));\nend;",
+        "  until b1=false;\n  write(chr(7));\n88:\nend;")
+    body = body.replace(
+        "procedure mvb(dx,dy:integer);\nvar xx,yy:byte;\nbegin",
+        "procedure mvb(dx,dy:integer);\nlabel 88;\nvar xx,yy:byte;\nbegin")
+    body = body.replace(
+        "    x:=xx; y:=yy; mark;\n    exit;\n  end;\n  write(chr(7));\nend;",
+        "    x:=xx; y:=yy; mark;\n    goto 88;\n  end;\n  write(chr(7));\n88:\nend;")
+    body = body.replace(
+        "procedure mfst;\nbegin\n"
+        "  for y:=1 to FS do for x:=1 to FS do if f[x,y]<>0 then exit;\nend;",
+        "procedure mfst;\nlabel 88;\nbegin\n"
+        "  y:=1;\n  while y<=fs do begin\n    x:=1;\n"
+        "    while x<=fs do begin\n      if f[x,y]<>0 then goto 88;\n"
+        "      x:=x+1;\n    end;\n    y:=y+1;\n  end;\n88:\nend;")
+    # settings menu: case with #27/exit and two-char label
+    body = body.replace(
+        """  case readkey of
+    #27:exit;
+    's','S':begin""",
+        """  c := readkey;
+  if c = chr(27) then goto 97
+  else if (c = 's') or (c = 'S') then begin""")
+    body = body.replace(
+        """          if pl<3 then mc:=3; if pl>7 then pl:=7;
+        end;
+  end;""",
+        """          if pl<3 then mc:=3; if pl>7 then pl:=7;
+        end;""")
+    for var in ("fs", "mc", "pl"):
+        body = body.replace(f"readln({var});", f"readln(ri); {var}:=ri;")
+    # game-loop case: two-char labels and #NN labels -> if/else chain
+    body = body.replace(
+        """    case c of
+      'W': mv(0,-1);
+      'S': mv(0,1);
+      'A': mv(-1,0);
+      'D': mv(1,0);
+      ' ',#13: if bs then begin
+              bs:=false; unmark;
+              if chk(x,y) then add3; {updf;}
+              if f[x,y]>0 then mark;
+            end else begin
+              bs:=true;
+            end;
+      'Z':begin updf; mark; end;
+      {'X':prc;}
+      #27:begin gotoxy(1,FS+5); COLORFG(_WHITE); COLORBG(_BLACK); write('You are leaving this game...'); end;
+    end;""",
+        """    if c = 'W' then mv(0,-1)
+    else if c = 'S' then mv(0,1)
+    else if c = 'A' then mv(-1,0)
+    else if c = 'D' then mv(1,0)
+    else if (c = ' ') or (c = chr(13)) then begin
+      if bs then begin
+              bs:=false; unmark;
+              if chk(x,y) then add3;
+              if f[x,y]>0 then mark;
+            end else begin
+              bs:=true;
+            end;
+      end
+    else if c = 'Z' then begin updf; mark; end
+    else if c = chr(27) then begin
+      gotoxy(1,FS+5); COLORFG(_WHITE); COLORBG(_BLACK);
+      write('You are leaving this game...');
+    end;""")
+    # MT+ error 253 (procedure too long): split the main block
+    body = body.replace(
+        "begin\n  clrscr;\n  COLORFG(_WHITE);\n"
+        "  writeln('CRISS CP/M CLR. Balls game');",
+        "procedure settings;\nlabel 88;\nbegin\n  clrscr;\n"
+        "  COLORFG(_WHITE);\n  writeln('CRISS CP/M CLR. Balls game');")
+    body = body.replace(
+        "  if c = chr(27) then goto 97\n",
+        "  if c = chr(27) then begin qf:=true; goto 88; end\n")
+    body = body.replace(
+        "        end;\n\n  clrscr;\n  gotoxy(1,1);\n  COLORFG(_BLUE);",
+        "        end;\n88:\nend;\n\nprocedure drawboard;\n"
+        "var x,y,z: byte;\nbegin\n  clrscr;\n  gotoxy(1,1);\n"
+        "  COLORFG(_BLUE);")
+    body = body.replace(
+        "  gotoxy(FS*3+10,16); write('ESC - quit');\n\n"
+        "  bs:=false; sc:=0; m:=0;",
+        "  gotoxy(FS*3+10,16); write('ESC - quit');\nend;\n\n"
+        "begin\n  KEYBUF := 0;\n  qf:=false;\n  settings;\n  if qf then goto 97;\n"
+        "  drawboard;\n  bs:=false; sc:=0; m:=0;")
+    body = body.replace(
+        "fillchar(f,sizeof(f),0);",
+        "for x:=1 to FSM do for y:=1 to FSM do f[x,y]:=0;")
+    body = body.replace("  clrscr;\n  COLORFG(_WHITE);\nend.",
+                        "  clrscr;\n  COLORFG(_WHITE);\n97:\nend.")
+    return head + body
+
+
+def convert_evas10n(text: str) -> str:
+    head = """program evas10n;
+const
+  BallChar = '@';
+  BatChars = '===';
+  BrickChar = '#';
+  scrw = 80;
+  scrh = 24;
+  batw = 5;
+""" + SHIM_CONSTS + """var
+  RNDSEED: integer;
+  KEYBUF: integer;
+  terminal: byte;
+  del, bat, batDir, balls, v, w, x, y: Integer;
+  bricks: array[3..8] of array[1..80] of Boolean;
+  quitf, lostBall: Boolean;
+  ch: Char;
+  iter: byte;
+  dc: boolean;
+
+""" + SHIM_PROCS
+    body = text[text.index("{$I CPM.INC}") + len("{$I CPM.INC}\n"):]
+    body = shared_renames(body)
+    import re
+    body = re.sub(r"\bexit\b", "quitf", body)
+    # compiler(8)/linker(7) identifier significance: make names unique
+    for old, new in (("WriteBricks", "WRBRICKS"), ("WriteBall", "WRBALL"),
+                     ("DeleteBall", "DELBALL"), ("WriteBat", "WRBAT"),
+                     ("DeleteBat", "DELBAT")):
+        body = body.replace(old, new)
+    # drop the TP3 command-line handling; fix the pace for a 6MHz Z80
+    body = body.replace(
+        """  del := 150; { 28 MHz assumed }
+  if (ParamCount > 0) then
+    begin
+      param := ParamStr(1);
+      Val(param, del, code);
+      if (code <> 0) then
+        begin
+          Help;
+          Halt;
+        end;
+    end;
+""",
+        "  del := 60;\n")
+    body = body.replace(
+        """    Writeln('Synopsis:');
+    Writeln(' EVAS10N [DELAY]');
+    Writeln(' DELAY: game loop iteration delay in milliseconds.');
+    Writeln('        Default: 800 (assuming 28MHz CPU)');
+    Writeln;
+""", "")
+    body = body.replace("Delay(trunc(del/2));", "Delay(del div 2);")
+    body = body.replace("begin\n  CURSOFF;\n  Help;",
+                        "begin\n  KEYBUF := 0;\n  CURSOFF;\n  Help;")
+    return head + body
+
+
 MTBUILD_GAMES = {
     "2048": {
         "title": "2048 (CRISS CP/M version - built on your MZ)",
@@ -312,6 +579,24 @@ MTBUILD_GAMES = {
             "sha256": "cdf2472a3db9c4af7b752e3d79ba0651dbbb8c837001d703567df3c56ea56209",
         },
         "convert": convert_2048,
+    },
+    "balls": {
+        "title": "Balls (CRISS CP/M version - built on your MZ)",
+        "unit": "BALLS",
+        "source": {
+            "url": CPM_GAMES + "BALLS.PAS",
+            "sha256": "a16e220798e3bd1d79b9b356b992a020647ebab281ac10c86d87b8cac7a07b4d",
+        },
+        "convert": convert_balls,
+    },
+    "evas10n": {
+        "title": "EVAS10N breakout (ivang78 adaptation - built on your MZ)",
+        "unit": "EVAS10N",
+        "source": {
+            "url": CPM_GAMES + "EVAS10N.PAS",
+            "sha256": "fd1c97ba9de564aa23c1e48c1aabfe82d92523cdc46f2a31546c7d9d7c0cb743",
+        },
+        "convert": convert_evas10n,
     },
 }
 

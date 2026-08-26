@@ -61,6 +61,7 @@ FD_IDLE_TICKS:  equ 06000h
 TV_ATTR:        equ 0800h       ; attribute plane delta inside bank 38h
 ATTR_NORMAL:    equ 007h        ; white on black
 ATTR_STANDOUT:  equ 047h        ; white, attribute bit6 = reverse video
+ATTR_STANDOUT_BIT: equ 040h     ; the reverse bit alone
 
         org     BIOS_BASE
 
@@ -281,7 +282,10 @@ init_common_state:
         ld      (csi_saved_col),a
         ld      a,ATTR_NORMAL
         ld      (cur_attr),a
+        ld      a,7
+        ld      (sgr_fg),a
         xor     a
+        ld      (sgr_bg),a
         ld      (key_ready),a
         ld      (hst_valid),a
         ld      (hst_dirty),a
@@ -433,12 +437,20 @@ conout_esc_not_ceol:
 conout_esc_not_ceos:
         cp      "("
         jr      nz,conout_esc_not_so
+        xor     a
+        ld      (sgr_fg),a
+        ld      a,7
+        ld      (sgr_bg),a
         ld      a,ATTR_STANDOUT
         ld      (cur_attr),a
         jr      conout_esc_abort
 conout_esc_not_so:
         cp      ")"
         jr      nz,conout_esc_abort
+        ld      a,7
+        ld      (sgr_fg),a
+        xor     a
+        ld      (sgr_bg),a
         ld      a,ATTR_NORMAL
         ld      (cur_attr),a
         jr      conout_esc_abort
@@ -629,7 +641,11 @@ csi_el:
         call    clear_to_eol
         jp      conout_done
 
-; ESC [ p1 ; p2 m - 0 resets, 7 sets reverse; other values ignored
+; ESC [ p1 ; p2 m - SGR. 0 resets, 7 swaps ink/paper, 30-37 set the ink
+; and 40-47 the paper (ANSI RGB order mapped to the MZ attribute's GRB).
+; The text attribute holds ONE colour: paper=black cells show ink in it,
+; anything else renders as reverse video in the paper colour (ink lost -
+; the closest the hardware gets to coloured backgrounds).
 csi_sgr:
         ld      a,(csi_p1)
         call    sgr_apply
@@ -642,15 +658,71 @@ csi_sgr:
 sgr_apply:
         or      a
         jr      nz,sgr_not_reset
-        ld      a,ATTR_NORMAL
-        ld      (cur_attr),a
-        ret
+        ld      a,7
+        ld      (sgr_fg),a
+        xor     a
+        ld      (sgr_bg),a
+        jr      sgr_recompute
 sgr_not_reset:
         cp      7
-        ret     nz
-        ld      a,ATTR_STANDOUT
+        jr      nz,sgr_not_swap
+        ld      a,(sgr_fg)
+        ld      b,a
+        ld      a,(sgr_bg)
+        ld      (sgr_fg),a
+        ld      a,b
+        ld      (sgr_bg),a
+        jr      sgr_recompute
+sgr_not_swap:
+        sub     30
+        cp      8
+        jr      nc,sgr_not_fg
+        call    sgr_map
+        ld      (sgr_fg),a
+        jr      sgr_recompute
+sgr_not_fg:
+        sub     10              ; 40-47 -> 0-7
+        cp      8
+        ret     nc              ; anything else: ignore
+        call    sgr_map
+        ld      (sgr_bg),a
+        ; fall through
+; One colour per cell: coloured ink wins, and the paper colour is shown
+; (as reverse video) only when the ink is black or white - that keeps
+; coloured sprites visible on coloured/white paper, while plain text on a
+; coloured panel still renders as a coloured block.
+sgr_recompute:
+        ld      a,(sgr_bg)
+        or      a
+        jr      z,sgr_plain
+        ld      a,(sgr_fg)
+        or      a
+        jr      z,sgr_paper
+        cp      7
+        jr      nz,sgr_plain
+sgr_paper:
+        ld      a,(sgr_bg)
+        or      ATTR_STANDOUT_BIT
         ld      (cur_attr),a
         ret
+sgr_plain:
+        ld      a,(sgr_fg)
+        ld      (cur_attr),a
+        ret
+; A = ANSI colour 0-7 (R=1,G=2,B=4) -> MZ attribute colour (B=1,R=2,G=4)
+sgr_map:
+        push    hl
+        ld      hl,sgr_map_tab
+        add     a,l
+        ld      l,a
+        ld      a,h
+        adc     a,0
+        ld      h,a
+        ld      a,(hl)
+        pop     hl
+        ret
+sgr_map_tab:
+        defb    0,2,4,6,1,3,5,7
 
 csi_save:
         ld      a,(cur_row)
@@ -2471,6 +2543,8 @@ csi_p2:         defs 1
 csi_idx:        defs 1
 csi_saved_row:  defs 1
 csi_saved_col:  defs 1
+sgr_fg:         defs 1
+sgr_bg:         defs 1
 clear_saved_row: defs 1
 key_ready:      defs 1
 key_char:       defs 1
