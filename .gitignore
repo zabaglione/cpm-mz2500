@@ -3,3 +3,7 @@ vendor/
 __pycache__/
 *.pyc
 .DS_Store
+
+# safety net: disk images never belong in the repo root
+/*.d88
+/*.hdd
