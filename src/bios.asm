@@ -282,6 +282,7 @@ init_common_state:
         ld      (csi_saved_col),a
         ld      a,ATTR_NORMAL
         ld      (cur_attr),a
+        ld      (cur_attr_sp),a
         ld      a,7
         ld      (sgr_fg),a
         xor     a
@@ -441,8 +442,7 @@ conout_esc_not_ceos:
         ld      (sgr_fg),a
         ld      a,7
         ld      (sgr_bg),a
-        ld      a,ATTR_STANDOUT
-        ld      (cur_attr),a
+        call    sgr_recompute
         jr      conout_esc_abort
 conout_esc_not_so:
         cp      ")"
@@ -451,8 +451,7 @@ conout_esc_not_so:
         ld      (sgr_fg),a
         xor     a
         ld      (sgr_bg),a
-        ld      a,ATTR_NORMAL
-        ld      (cur_attr),a
+        call    sgr_recompute
         jr      conout_esc_abort
 conout_esc_row:
         cp      2
@@ -687,11 +686,22 @@ sgr_not_fg:
         call    sgr_map
         ld      (sgr_bg),a
         ; fall through
-; One colour per cell: coloured ink wins, and the paper colour is shown
-; (as reverse video) only when the ink is black or white - that keeps
-; coloured sprites visible on coloured/white paper, while plain text on a
-; coloured panel still renders as a coloured block.
+; One colour per cell, decided per character class:
+; - spaces show the paper colour (reverse block when bg is set) - that is
+;   how block-styled UIs (2048's tiles, panels) are painted
+; - visible glyphs keep coloured ink; the paper colour wins only when the
+;   ink is black or white (text on a coloured panel becomes a colour
+;   block, coloured sprites stay visible on coloured/white paper)
 sgr_recompute:
+        ld      a,(sgr_bg)
+        or      a
+        jr      nz,sgr_sp_paper
+        ld      a,(sgr_fg)
+        jr      sgr_sp_store
+sgr_sp_paper:
+        or      ATTR_STANDOUT_BIT
+sgr_sp_store:
+        ld      (cur_attr_sp),a
         ld      a,(sgr_bg)
         or      a
         jr      z,sgr_plain
@@ -796,7 +806,12 @@ put_char_advance:
         ld      hl,(conout_cell)
         ld      de,VWIN+TV_ATTR
         add     hl,de
+        ld      a,(conout_char)
+        cp      020h
         ld      a,(cur_attr)
+        jr      nz,put_attr_glyph
+        ld      a,(cur_attr_sp)
+put_attr_glyph:
         ld      (hl),a
         call    video_leave
         ld      a,(cur_col)
@@ -2545,6 +2560,7 @@ csi_saved_row:  defs 1
 csi_saved_col:  defs 1
 sgr_fg:         defs 1
 sgr_bg:         defs 1
+cur_attr_sp:    defs 1
 clear_saved_row: defs 1
 key_ready:      defs 1
 key_char:       defs 1
