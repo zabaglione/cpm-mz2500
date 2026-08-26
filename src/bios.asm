@@ -60,6 +60,7 @@ TV_ROWS:        equ 25
 FD_IDLE_TICKS:  equ 06000h
 TV_ATTR:        equ 0800h       ; attribute plane delta inside bank 38h
 ATTR_NORMAL:    equ 007h        ; white on black
+ATTR_STANDOUT:  equ 047h        ; white, attribute bit6 = reverse video
 
         org     BIOS_BASE
 
@@ -276,6 +277,11 @@ bdos_reset_hook:
 init_common_state:
         xor     a
         ld      (esc_state),a
+        ld      (csi_saved_row),a
+        ld      (csi_saved_col),a
+        ld      a,ATTR_NORMAL
+        ld      (cur_attr),a
+        xor     a
         ld      (key_ready),a
         ld      (hst_valid),a
         ld      (hst_dirty),a
@@ -388,8 +394,13 @@ conout_not_esc:
         call    bell
         jr      conout_done
 
-; ESC = row+20h col+20h  (ADM-3A cursor addressing); anything else after
-; ESC is ignored.
+; Escape sequences. Three dialects coexist behind the byte after ESC:
+;   ESC = row+20h col+20h   ADM-3A cursor addressing (TeleVideo/Kaypro too)
+;   ESC [ ...               ANSI/VT100 CSI subset (H f J K A B C D m s u)
+;   ESC T Y ( )             TeleVideo extras: clear-EOL, clear-EOS,
+;                           standout on (dim), standout off (bright)
+; Anything else after ESC is swallowed (insert/delete line and char
+; included - nothing in the target set has needed them yet).
 conout_escape:
         ld      hl,esc_state
         ld      a,(hl)
@@ -397,9 +408,40 @@ conout_escape:
         jr      nz,conout_esc_row
         ld      a,c
         cp      "="
-        jr      nz,conout_esc_abort
+        jr      nz,conout_esc_not_adm
         ld      (hl),2
         jp      conout_done
+conout_esc_not_adm:
+        cp      "["
+        jr      nz,conout_esc_not_csi
+        ld      (hl),4
+        xor     a
+        ld      (csi_p1),a
+        ld      (csi_p2),a
+        ld      (csi_idx),a
+        jp      conout_done
+conout_esc_not_csi:
+        cp      "T"
+        jr      nz,conout_esc_not_ceol
+        call    clear_to_eol
+        jr      conout_esc_abort
+conout_esc_not_ceol:
+        cp      "Y"
+        jr      nz,conout_esc_not_ceos
+        call    clear_to_eos
+        jr      conout_esc_abort
+conout_esc_not_ceos:
+        cp      "("
+        jr      nz,conout_esc_not_so
+        ld      a,ATTR_STANDOUT
+        ld      (cur_attr),a
+        jr      conout_esc_abort
+conout_esc_not_so:
+        cp      ")"
+        jr      nz,conout_esc_abort
+        ld      a,ATTR_NORMAL
+        ld      (cur_attr),a
+        jr      conout_esc_abort
 conout_esc_row:
         cp      2
         jr      nz,conout_esc_col
@@ -413,6 +455,8 @@ conout_esc_row_ok:
         ld      (hl),3
         jp      conout_done
 conout_esc_col:
+        cp      3
+        jp      nz,csi_char
         ld      a,c
         sub     020h
         cp      TV_COLS
@@ -426,6 +470,245 @@ conout_esc_abort:
         ld      hl,esc_state
         ld      (hl),0
         jp      conout_done
+
+; ---- ANSI CSI accumulator (esc_state = 4) ----
+; Digits build the current parameter, ';' moves to the second one,
+; private markers (<=>? etc.) are skipped, 40h-7Eh executes and ends.
+csi_char:
+        ld      a,c
+        cp      "0"
+        jr      c,csi_not_digit
+        cp      "9"+1
+        jr      nc,csi_not_digit
+        ld      hl,csi_p1
+        ld      a,(csi_idx)
+        or      a
+        jr      z,csi_digit_have
+        inc     hl              ; second and later parameters share p2
+csi_digit_have:
+        ld      a,(hl)
+        add     a,a
+        ld      d,a             ; d = p*2
+        add     a,a
+        add     a,a             ; a = p*8
+        add     a,d             ; a = p*10
+        ld      d,a
+        ld      a,c
+        sub     "0"
+        add     a,d
+        ld      (hl),a
+        jp      conout_done
+csi_not_digit:
+        cp      ";"
+        jr      nz,csi_not_semi
+        ld      hl,csi_idx
+        inc     (hl)
+        jp      conout_done
+csi_not_semi:
+        cp      040h
+        jp      c,conout_done   ; private markers: skip, stay in CSI
+        ld      hl,esc_state
+        ld      (hl),0          ; final byte: sequence ends here
+        cp      "H"
+        jp      z,csi_cup
+        cp      "f"
+        jp      z,csi_cup
+        cp      "A"
+        jp      z,csi_up
+        cp      "B"
+        jp      z,csi_down
+        cp      "C"
+        jp      z,csi_right
+        cp      "D"
+        jp      z,csi_left
+        cp      "J"
+        jp      z,csi_ed
+        cp      "K"
+        jp      z,csi_el
+        cp      "m"
+        jp      z,csi_sgr
+        cp      "s"
+        jp      z,csi_save
+        cp      "u"
+        jp      z,csi_restore
+        jp      conout_done     ; everything else: ignore
+
+; ESC [ r ; c H - 1-based, missing/0 parameters mean 1
+csi_cup:
+        ld      a,(csi_p1)
+        call    csi_one_based
+        cp      TV_ROWS
+        jr      c,csi_cup_row_ok
+        ld      a,TV_ROWS-1
+csi_cup_row_ok:
+        ld      (cur_row),a
+        ld      a,(csi_p2)
+        call    csi_one_based
+        cp      TV_COLS
+        jr      c,csi_cup_col_ok
+        ld      a,TV_COLS-1
+csi_cup_col_ok:
+        ld      (cur_col),a
+        jp      conout_done
+csi_one_based:
+        or      a
+        jr      nz,csi_one_dec
+        ret                     ; 0 -> row/col 0
+csi_one_dec:
+        dec     a
+        ret
+
+; ESC [ n A/B/C/D - move n (default 1), clamped at the screen edges
+csi_count:
+        ld      a,(csi_p1)
+        or      a
+        ret     nz
+        inc     a
+        ret
+csi_up:
+        call    csi_count
+        ld      b,a
+        ld      a,(cur_row)
+        sub     b
+        jr      nc,csi_up_ok
+        xor     a
+csi_up_ok:
+        ld      (cur_row),a
+        jp      conout_done
+csi_down:
+        call    csi_count
+        ld      b,a
+        ld      a,(cur_row)
+        add     a,b
+        cp      TV_ROWS
+        jr      c,csi_down_ok
+        ld      a,TV_ROWS-1
+csi_down_ok:
+        ld      (cur_row),a
+        jp      conout_done
+csi_right:
+        call    csi_count
+        ld      b,a
+        ld      a,(cur_col)
+        add     a,b
+        cp      TV_COLS
+        jr      c,csi_right_ok
+        ld      a,TV_COLS-1
+csi_right_ok:
+        ld      (cur_col),a
+        jp      conout_done
+csi_left:
+        call    csi_count
+        ld      b,a
+        ld      a,(cur_col)
+        sub     b
+        jr      nc,csi_left_ok
+        xor     a
+csi_left_ok:
+        ld      (cur_col),a
+        jp      conout_done
+
+; ESC [ J (cursor to end of screen) / ESC [ 2 J (whole screen)
+csi_ed:
+        ld      a,(csi_p1)
+        cp      2
+        jr      nz,csi_ed_not_all
+        call    clear_screen
+        jp      conout_done
+csi_ed_not_all:
+        or      a
+        jp      nz,conout_done  ; 1J (start to cursor) unused: ignore
+        call    clear_to_eos
+        jp      conout_done
+
+; ESC [ K - cursor to end of line
+csi_el:
+        ld      a,(csi_p1)
+        or      a
+        jp      nz,conout_done
+        call    clear_to_eol
+        jp      conout_done
+
+; ESC [ p1 ; p2 m - 0 resets, 7 sets reverse; other values ignored
+csi_sgr:
+        ld      a,(csi_p1)
+        call    sgr_apply
+        ld      a,(csi_idx)
+        or      a
+        jp      z,conout_done   ; single parameter form
+        ld      a,(csi_p2)
+        call    sgr_apply
+        jp      conout_done
+sgr_apply:
+        or      a
+        jr      nz,sgr_not_reset
+        ld      a,ATTR_NORMAL
+        ld      (cur_attr),a
+        ret
+sgr_not_reset:
+        cp      7
+        ret     nz
+        ld      a,ATTR_STANDOUT
+        ld      (cur_attr),a
+        ret
+
+csi_save:
+        ld      a,(cur_row)
+        ld      (csi_saved_row),a
+        ld      a,(cur_col)
+        ld      (csi_saved_col),a
+        jp      conout_done
+csi_restore:
+        ld      a,(csi_saved_row)
+        ld      (cur_row),a
+        ld      a,(csi_saved_col)
+        ld      (cur_col),a
+        jp      conout_done
+
+; blank (20h / ATTR_NORMAL) from the cursor to the end of the line;
+; cursor does not move
+clear_to_eol:
+        call    cursor_cell
+        ld      a,(cur_col)
+        ld      b,a
+        ld      a,TV_COLS
+        sub     b
+        ld      b,a
+        call    video_enter_tvram
+clear_eol_loop:
+        push    hl
+        ld      de,VWIN
+        add     hl,de
+        ld      (hl),020h
+        ld      de,TV_ATTR
+        add     hl,de
+        ld      (hl),ATTR_NORMAL
+        pop     hl
+        inc     hl
+        ld      a,h
+        and     007h
+        ld      h,a
+        djnz    clear_eol_loop
+        call    video_leave     ; stack-switching pair: never tail-call
+        ret
+
+; blank from the cursor to the end of the screen; cursor does not move
+clear_to_eos:
+        call    clear_to_eol
+        ld      a,(cur_row)
+        ld      (clear_saved_row),a
+clear_eos_next:
+        ld      a,(cur_row)
+        inc     a
+        cp      TV_ROWS
+        jr      nc,clear_eos_done
+        ld      (cur_row),a
+        call    clear_row       ; preserves cur_col
+        jr      clear_eos_next
+clear_eos_done:
+        ld      a,(clear_saved_row)
+        ld      (cur_row),a
+        ret
 
 ; write printable char in A at the cursor, advance, wrap
 put_char_advance:
@@ -441,7 +724,8 @@ put_char_advance:
         ld      hl,(conout_cell)
         ld      de,VWIN+TV_ATTR
         add     hl,de
-        ld      (hl),ATTR_NORMAL
+        ld      a,(cur_attr)
+        ld      (hl),a
         call    video_leave
         ld      a,(cur_col)
         inc     a
@@ -2178,6 +2462,13 @@ cur_col:        defs 1
 scroll_base:    defs 2
 esc_state:      defs 1
 esc_row:        defs 1
+cur_attr:       defs 1
+csi_p1:         defs 1
+csi_p2:         defs 1
+csi_idx:        defs 1
+csi_saved_row:  defs 1
+csi_saved_col:  defs 1
+clear_saved_row: defs 1
 key_ready:      defs 1
 key_char:       defs 1
 prev_matrix:    defs 14
