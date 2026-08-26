@@ -92,42 +92,21 @@ A>PUTSYS
 
 ## ゲームで遊ぶ（お手元ビルド）
 
-ゲームは本体イメージに同梱せず、**ご自分のマシン上で起動フロッピーを
-組み立てる**スクリプトを用意しています（取得は全てSHA256検証付き）。
-必要なのは **Python 3 だけ**です。CP/M本体はローカルでビルド済みなら
-それを、なければリリース版を自動で取得します（z80asm不要）。
+動作確認済みのゲーム（Ladder / CatChum / Rogue / In The Dark /
+Colossal Cave Adventure / FLAP など）を、**ご自分のマシン上で起動
+フロッピーに組み立てる**スクリプトを用意しています。ゲームは同梱
+しません。必要なのは **Python 3 だけ**です:
 
 ```
-git clone https://github.com/zabaglione/cpm-mz2500.git
-cd cpm-mz2500
-python3 tools/make_rogue_disk.py       # → build/rogue.d88
-python3 tools/make_inthedark_disk.py   # → build/inthedark.d88
+python3 tools/make_game_disk.py --list      # カタログ表示
+python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
 ```
 
-できあがったディスクの使い方は共通です:
-
-1. **ブラウザで** —
-   [ブラウザ版エミュレータ](https://zabaglione.github.io/mz2500-web-emulator/)
-   を開き、d88ファイルを画面にドラッグ&ドロップ。CP/Mが起動したら
-   `A>` でコマンド名を入力。ディスクへの書き込み（セーブ等）は
-   ブラウザ内に保存され、次回も続きから遊べます
-2. **実機で** — 「実機で — フロッピー」の手順どおりフロッピーに書いて
-   起動し、`A>` でコマンド名を入力
-
-### Rogue 1.7（1985年）— `ROGUE`
-
-オリジナルUNIX版に由来するダンジョン探索RPG。ライセンス表記のない
-当時のソフトのため同梱せず、お手元で取得します（生成したディスクは
-ご自身の私的利用の範囲でお使いください）。
-
-移動は h j k l（斜めは y u b n）、コマンド一覧は `TYPE ROGUE.DOC`。
-セーブは `S`（再開は `ROGUE ROGUE.SAV`、読み込むとセーブは消えます）。
-
-### In The Dark（2022年）— `ITDARK80`
-
-[Kian Ryan氏作のローグライク](https://github.com/kianryan/InTheDark)
-（MITライセンス）。灯り `#` を頼りに宝 `$` を集めて次の階へ。灯りが
-尽きると Grue `"` が闇から迫ってきます。移動は w a s d、終了は q。
+できたd88を
+[ブラウザ版エミュレータ](https://zabaglione.github.io/mz2500-web-emulator/)
+へドラッグ&ドロップするか、実機のフロッピーに書いて起動してください。
+**タイトル一覧・操作方法・注意点は [GAMES.md](GAMES.md) にまとめて
+あります。**
 
 ## フロッピーを入れ替えるとき
 
