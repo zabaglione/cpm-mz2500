@@ -1157,9 +1157,12 @@ seldsk_sasi:
         ret
 
 ; --- deblocking (DRI skeleton, one shared 256B host buffer) ------------
-WRUAL:  equ 0                   ; write to unallocated
+; BDOS passes the write type in C (CP/M 2.2 System Interface):
+; 0 = deferrable write to an allocated block, 1 = directory (flush now),
+; 2 = first write into a freshly allocated block (no preread needed).
+WRALL:  equ 0                   ; write to allocated
 WRDIR:  equ 1                   ; write to directory
-WRALL:  equ 2                   ; write to allocated
+WRUAL:  equ 2                   ; write to unallocated
 
 read:
         xor     a

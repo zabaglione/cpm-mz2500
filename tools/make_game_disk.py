@@ -39,8 +39,8 @@ from d88 import D88Image  # noqa: E402
 VENDOR = PROJECT / "vendor" / "games"
 # without a local build (no z80asm needed), the released boot disk is used
 BOOT_URL = ("https://github.com/zabaglione/cpm-mz2500/releases/download/"
-            "v1.2.0/cpm_boot.d88")
-BOOT_SHA256 = "682a2c02868964f464d84d69a702d2c384cbc656403f86fe178723f075fdf59a"
+            "v1.2.1/cpm_boot.d88")
+BOOT_SHA256 = "c1b95faaa77377ff60ccffc6dae5f78e49b706a90342c6a6a6a8b7d89fa2acc9"
 
 DERAMP = ("https://deramp.com/downloads/mfe_archive/040-Software/"
           "Digital%20Research/CPM%20Implementations/COMPUPRO/GAMES/")
@@ -143,6 +143,200 @@ GAMES = {
 }
 
 
+
+# ---- games built ON the MZ-2500 with the bundled Pascal/MT+ -------------
+# The fetched TP3 source is rewritten for Pascal/MT+ (our shim below) and
+# shipped on a disk together with the compiler: boot it, SUBMIT MAKE, and
+# the machine compiles its own game.
+
+SHIM_PROCS = """\
+EXTERNAL FUNCTION @BDOS(FUNC: INTEGER; PARM: INTEGER): INTEGER;
+
+PROCEDURE GOTOXY(X, Y: INTEGER);
+BEGIN
+  WRITE(CHR(27), '[', Y:1, ';', X:1, 'H');
+END;
+
+PROCEDURE CLRSCR;
+BEGIN
+  WRITE(CHR(27), '[2J', CHR(27), '[H');
+END;
+
+PROCEDURE CURSOFF;
+BEGIN
+  WRITE(CHR(27), '[?25l');
+END;
+
+PROCEDURE CURSON;
+BEGIN
+  WRITE(CHR(27), '[?25h');
+END;
+
+PROCEDURE COLORFG(C: BYTE);
+BEGIN
+  WRITE(CHR(27), '[3', CHR(48 + C), 'm');
+END;
+
+PROCEDURE COLORBG(C: BYTE);
+BEGIN
+  WRITE(CHR(27), '[4', CHR(48 + C), 'm');
+END;
+
+FUNCTION KEYPRESSED: BOOLEAN;
+BEGIN
+  RNDSEED := RNDSEED + 1;
+  KEYPRESSED := @BDOS(11, 0) <> 0;
+END;
+
+FUNCTION READKEY: CHAR;
+VAR K: INTEGER;
+BEGIN
+  REPEAT
+    RNDSEED := RNDSEED + 1;
+    K := @BDOS(6, 255);
+  UNTIL K <> 0;
+  READKEY := CHR(K);
+END;
+
+PROCEDURE RANDOMIZE;
+BEGIN
+  IF RNDSEED = 0 THEN RNDSEED := 12345;
+END;
+
+FUNCTION RANDOM(N: INTEGER): INTEGER;
+VAR R: INTEGER;
+BEGIN
+  RNDSEED := RNDSEED * 25173 + 13849;
+  R := RNDSEED MOD N;
+  IF R < 0 THEN R := R + N;
+  RANDOM := R;
+END;
+
+FUNCTION UPCASE(C: CHAR): CHAR;
+BEGIN
+  IF (C >= 'a') AND (C <= 'z') THEN
+    UPCASE := CHR(ORD(C) - 32)
+  ELSE
+    UPCASE := C;
+END;
+
+PROCEDURE DELAY(MS: INTEGER);
+VAR I, J: INTEGER;
+BEGIN
+  FOR I := 1 TO MS DO
+    FOR J := 1 TO 60 DO ;
+END;
+"""
+
+
+SHIM_CONSTS = """\
+  _BLACK = 0; _RED = 1; _GREEN = 2; _YELLOW = 3;
+  _BLUE = 4; _MAGENTA = 5; _CYAN = 6; _WHITE = 7;
+"""
+
+
+
+def convert_2048(text: str) -> str:
+    # rebuild the declaration head in ISO order (label, const, var,
+    # routines) - MT+ does not allow TP3's reopened sections
+    head = """program g2048;
+label 99;
+const
+""" + SHIM_CONSTS + """var
+  RNDSEED: integer;
+  terminal: byte;
+  d,x,y,i,j,a,z: byte;
+  f: array[0..16,0..16] of integer;
+  c: char;
+  score, bestscore: integer;
+
+""" + SHIM_PROCS
+    body = text[text.index("{$I CPM.INC}") + len("{$I CPM.INC}\n"):]
+    text = head + body
+    # ISO: for-control variables must be local to the routine
+    text = text.replace(
+        "procedure print;\nbegin",
+        "procedure print;\nvar x,y,z: byte;\nbegin")
+    text = text.replace(
+        "procedure shft(dx,dy:integer);\nvar n:integer;\nbegin",
+        "procedure shft(dx,dy:integer);\nvar n:integer; x,y: byte;\nbegin")
+    # shim routine names are 7-char unique for LINKMT
+    text = text.replace("SetTextColor(", "COLORFG(")
+    text = text.replace("SetTextBg(", "COLORBG(")
+    text = text.replace("CursorOff", "CURSOFF")
+    text = text.replace("CursorOn", "CURSON")
+    # TP3 #NN char literals
+    text = text.replace("write(#7)", "write(chr(7))")
+    text = text.replace("until c=#27", "until c=chr(27)")
+    text = text.replace("goto L1", "goto 99")
+    text = text.replace("L1:", "99:")
+    # case-label #27 plus case-else: restructure as if/else
+    text = text.replace(
+        """    case c of
+      'A':shft(-1,0);
+      'W':shft(0,-1);
+      'S':shft(0,1);
+      'D':shft(1,0);
+      'R':goto 99;
+      #27:begin end;
+      else write(chr(7));
+    end;""",
+        """    if c = 'A' then shft(-1,0)
+    else if c = 'W' then shft(0,-1)
+    else if c = 'S' then shft(0,1)
+    else if c = 'D' then shft(1,0)
+    else if c = 'R' then goto 99
+    else if c <> chr(27) then write(chr(7));""")
+    # fillchar/sizeof -> explicit loops (x,y are in scope)
+    text = text.replace(
+        "fillchar(f,sizeof(f),0);a:=2;",
+        "for x:=0 to 16 do for y:=0 to 16 do f[x,y]:=0;\n  a:=2;")
+    # 'exit' leaves dshf early: MT+ needs a label
+    text = text.replace(
+        "procedure dshf(x0,y0,dx,dy:integer);\nvar x,y,n:integer;\nbegin",
+        "procedure dshf(x0,y0,dx,dy:integer);\nlabel 88;\nvar x,y,n:integer;\nbegin")
+    text = text.replace("if n=0 then exit;", "if n=0 then goto 88;")
+    text = text.replace(
+        "  until false;\nend;\n\nprocedure shft",
+        "  until false;\n88:\nend;\n\nprocedure shft")
+    return text
+
+
+
+MTBUILD_GAMES = {
+    "2048": {
+        "title": "2048 (CRISS CP/M version - built on your MZ)",
+        "unit": "G2048",
+        "source": {
+            "url": CPM_GAMES + "2048.PAS",
+            "sha256": "cdf2472a3db9c4af7b752e3d79ba0651dbbb8c837001d703567df3c56ea56209",
+        },
+        "convert": convert_2048,
+    },
+}
+
+
+def build_mtbuild(name: str, output: pathlib.Path) -> None:
+    game = MTBUILD_GAMES[name]
+    import fetch_tools
+    fetch_tools.main()                     # ensure the Pascal/MT+ suite
+    files = {}
+    for path in fetch_tools.group_files("PASCAL"):
+        if not path.is_file():
+            raise SystemExit(f"{path} missing - fetch_tools could not get it")
+        files[path.name] = path.read_bytes()
+    spec = game["source"]
+    src = fetch_pinned(spec["url"], spec["sha256"]).decode("ascii", "replace")
+    src = src.replace("\r\n", "\n")   # converter patterns expect LF
+    unit = game["unit"]
+    files[unit + ".PAS"] = game["convert"](src).replace("\n", "\r\n").encode("ascii")
+    files["MAKE.SUB"] = ("MTPLUS " + unit + "\r\nLINKMT " + unit
+                         + ",PASLIB/S\r\n").encode("ascii")
+    build_disk(files, output)
+    print(f"wrote {output} (bootable; run SUBMIT MAKE once - the MZ-2500")
+    print(f"compiles the game itself (a few minutes) - then type {unit})")
+
+
 def fetch_pinned(url: str, digest: str) -> bytes:
     # some archives (the IF Archive included) reject urllib's default UA
     request = urllib.request.Request(
@@ -194,7 +388,8 @@ def build_disk(files: dict[str, bytes], output: pathlib.Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("game", nargs="?", choices=sorted(GAMES),
+    parser.add_argument("game", nargs="?",
+                        choices=sorted(GAMES) + sorted(MTBUILD_GAMES),
                         help="game to build (see --list)")
     parser.add_argument("--list", action="store_true",
                         help="show the catalogue and exit")
@@ -208,6 +403,8 @@ def main() -> int:
     if args.list:
         for name, game in sorted(GAMES.items()):
             print(f"{name:10s} {game['title']}  ->  {game['command']}")
+        for name, game in sorted(MTBUILD_GAMES.items()):
+            print(f"{name:10s} {game['title']}  ->  SUBMIT MAKE")
         return 0
 
     if args.local:
@@ -220,6 +417,11 @@ def main() -> int:
 
     if not args.game:
         parser.error("give a game name, --local files, or --list")
+    if args.game in MTBUILD_GAMES:
+        output = pathlib.Path(args.output
+                              or PROJECT / "build" / f"{args.game}.d88")
+        build_mtbuild(args.game, output)
+        return 0
     game = GAMES[args.game]
     files = {spec["name"]: game_file(args.game, spec)
              for spec in game["files"]}

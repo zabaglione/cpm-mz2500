@@ -25,7 +25,7 @@ import sys
 import urllib.request
 import zipfile
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 VENDOR = REPO_ROOT / "vendor" / "cpmtools"
 
 DOWNLOADS = {
@@ -72,6 +72,7 @@ MEMBERS = [
     ("mtp561.zip", "PAS1.ZIP!LINKMT.COM", "LINKMT.COM", "PASCAL"),
     ("mtp561.zip", "PAS1.ZIP!PASLIB.ERL", "PASLIB.ERL", "PASCAL"),
     ("mtp561.zip", "PAS1.ZIP!PROG.SRC", "PROG.SRC", "PASCAL"),
+    ("mtp561.zip", "PAS2.ZIP!MTERRS.TXT", "MTERRS.TXT", "PASCAL"),
     # --- PL/I-80 1.4 ---------------------------------------------------
     ("pli80_14.zip", "DISK1/PLI.COM", "PLI.COM", "PLI"),
     ("pli80_14.zip", "DISK1/PLI0.OVL", "PLI0.OVL", "PLI"),
