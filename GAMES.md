@@ -80,8 +80,8 @@ MITライセンス）。灯り `#` を頼りに宝 `$` を集めて次の階へ�
 ### FLAP CP/M — Flappy Bird型
 
 [ivang78/cpm-games](https://github.com/ivang78/cpm-games)収載。
-起動時の端末選択は **2（VT102）を推奨**（1のANSIカラーは本機では
-色が付かず白黒表示になります）。
+起動時の端末選択は **1（ANSI）でカラー表示**になります
+（2=VT102は白黒）。
 
 ## 自分のMZでビルドするゲーム
 
@@ -146,9 +146,6 @@ python3 tools/make_game_disk.py --local ZORK1.COM ZORK1.DAT --output build/zork1
 
 ## 未検証（メモ）
 
-- **2048 / EVAS10N / BALLS**（ivang78/cpm-games）— ソースのみの配布で、
-  ビルドにTurbo Pascal 3.0が必要。ANSIカラー前提のため本機では白黒に
-  なる見込み
 - **Super Star Trek** — MBASIC（Microsoft BASIC-80）の別途入手が必要
 - **Nemesis**（1981年の商用RPG）— 権利未整理のため保留
 
