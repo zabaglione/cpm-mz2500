@@ -6,6 +6,9 @@ binary is never bundled with a release. This script downloads the archive
 preserved at The Rogue Archive onto YOUR machine and builds a bootable
 disk for YOUR own use - nothing is redistributed by this project.
 
+Needs only Python 3: without a local CP/M build the released boot disk
+is downloaded instead (SHA256-pinned), so no assembler is required.
+
 Steps:
 1. fetch rogue17cpm.zip (SHA256-pinned) into vendor/rogue/
 2. take ROGUE.CPM - installed for a Televideo TS803, whose escape codes
@@ -39,10 +42,27 @@ from d88 import D88Image  # noqa: E402
 VENDOR = PROJECT / "vendor" / "rogue"
 URL = "https://britzl.github.io/roguearchive/files/rogue17cpm.zip"
 SHA256 = "4249c0b771d0a9caa1ea9210ebef7e7a200c1b060a13199679cef8a7c62d9da5"
+# without a local build (no z80asm needed), the released boot disk is used
+BOOT_URL = ("https://github.com/zabaglione/cpm-mz2500/releases/download/"
+            "v1.2.0/cpm_boot.d88")
+BOOT_SHA256 = "682a2c02868964f464d84d69a702d2c384cbc656403f86fe178723f075fdf59a"
 # rogue17cpm.zip nests rogue17.zip; these members go onto the disk
 MEMBERS = ["ROGUE.CPM", "ROGUE.DOC", "ROGUE.NOT"]
 CAP_BITMAP_OFFSET = 0x22F - 0x100   # terminal capability bitmap (addr 022Fh)
 CAP_BITMAP_VALUE = 0xC3             # dim+bright+clear-EOL+clear-EOS only
+
+
+def boot_disk() -> pathlib.Path:
+    boot = PROJECT / "build" / "cpm_boot.d88"
+    if boot.is_file():
+        return boot
+    print("no local CP/M build - downloading the released boot disk...")
+    blob = urllib.request.urlopen(BOOT_URL, timeout=120).read()
+    if hashlib.sha256(blob).hexdigest() != BOOT_SHA256:
+        raise SystemExit(f"SHA256 mismatch for {BOOT_URL}")
+    boot.parent.mkdir(parents=True, exist_ok=True)
+    boot.write_bytes(blob)
+    return boot
 
 
 def fetch() -> None:
@@ -64,9 +84,7 @@ def main() -> int:
     parser.add_argument("--output", default=str(PROJECT / "build" / "rogue.d88"))
     args = parser.parse_args()
 
-    boot = PROJECT / "build" / "cpm_boot.d88"
-    if not boot.is_file():
-        raise SystemExit(f"{boot} missing - build the CP/M boot disk first")
+    boot = boot_disk()
     fetch()
 
     rogue = bytearray((VENDOR / "ROGUE.CPM").read_bytes())
