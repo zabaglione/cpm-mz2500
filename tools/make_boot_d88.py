@@ -199,7 +199,7 @@ def build_disk(output: pathlib.Path, with_files: bool) -> None:
             path = VENDOR / "bin" / name
             if not path.is_file():
                 print(f"note: {name} not in vendor/cpm22/bin - "
-                      "run os/cpm/tools/fetch_cpm22.py; building without it")
+                      "run tools/fetch_cpm22.py; building without it")
                 continue
             fs.add_file(name, path.read_bytes())
             injected += 1

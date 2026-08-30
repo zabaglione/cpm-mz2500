@@ -39,8 +39,8 @@ from d88 import D88Image  # noqa: E402
 VENDOR = PROJECT / "vendor" / "games"
 # without a local build (no z80asm needed), the released boot disk is used
 BOOT_URL = ("https://github.com/zabaglione/cpm-mz2500/releases/download/"
-            "v1.2.1/cpm_boot.d88")
-BOOT_SHA256 = "c1b95faaa77377ff60ccffc6dae5f78e49b706a90342c6a6a6a8b7d89fa2acc9"
+            "v1.3.2/cpm_boot.d88")
+BOOT_SHA256 = "16e1212332a0943aaac4aa0ba5bf73d1cf8e2de46248bedfdfff92dd2d31d3f5"
 
 DERAMP = ("https://deramp.com/downloads/mfe_archive/040-Software/"
           "Digital%20Research/CPM%20Implementations/COMPUPRO/GAMES/")

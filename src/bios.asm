@@ -807,11 +807,7 @@ put_char_advance:
         ld      de,VWIN+TV_ATTR
         add     hl,de
         ld      a,(conout_char)
-        cp      020h
-        ld      a,(cur_attr)
-        jr      nz,put_attr_glyph
-        ld      a,(cur_attr_sp)
-put_attr_glyph:
+        call    attr_for_char
         ld      (hl),a
         call    video_leave
         ld      a,(cur_col)
@@ -841,6 +837,41 @@ line_feed:
         jp      clear_row       ; clears row 24, returns
 line_feed_store:
         ld      (cur_row),a
+        ret
+
+; A = character -> the attribute its cell should carry.
+;
+; The hardware paints one colour per cell (plus reverse, whose ink is
+; black), so a cell cannot hold coloured ink AND coloured paper. Which
+; of the two to keep is decided by the character class:
+;   spaces + alphanumerics -> paper (cur_attr_sp)
+;   everything else        -> ink   (cur_attr)
+; Letters and digits over a coloured background are nearly always a
+; label drawn INSIDE a block (2048's tiles and status panel), where
+; keeping the ink would punch a black hole through the block; symbols
+; are nearly always sprites drawn as ink on a background someone else
+; painted (Balls' '()' pieces). With black paper both attributes are
+; identical, so ordinary text is unaffected either way.
+attr_for_char:
+        cp      020h
+        jr      z,attr_paper
+        cp      030h
+        jr      c,attr_ink
+        cp      03ah
+        jr      c,attr_paper    ; 0-9
+        cp      041h
+        jr      c,attr_ink
+        cp      05bh
+        jr      c,attr_paper    ; A-Z
+        cp      061h
+        jr      c,attr_ink
+        cp      07bh
+        jr      c,attr_paper    ; a-z
+attr_ink:
+        ld      a,(cur_attr)
+        ret
+attr_paper:
+        ld      a,(cur_attr_sp)
         ret
 
 ; program CRTC text start address (registers 01h/02h) from scroll_base

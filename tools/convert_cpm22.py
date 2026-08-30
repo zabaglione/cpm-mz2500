@@ -7,7 +7,7 @@ Output: Z80-mnemonic source that Bas Wijnen z80asm 1.8 assembles to the
 same bytes (every 8080 instruction maps 1:1 onto the identical Z80 opcode).
 
 The conversion is fully mechanical - no hand edits. Correctness is enforced
-by os/cpm/tests/test_vendor_match.py, which byte-compares the assembled
+by tests/test_vendor_match.py, which byte-compares the assembled
 output against the vendored CPM.SYS reference (serial bytes masked).
 
 What is handled (validated against the actual vendored sources):

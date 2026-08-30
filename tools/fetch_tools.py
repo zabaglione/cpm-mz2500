@@ -25,7 +25,7 @@ import sys
 import urllib.request
 import zipfile
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 VENDOR = REPO_ROOT / "vendor" / "cpmtools"
 
 DOWNLOADS = {

@@ -3,7 +3,7 @@
 
 Everything is pinned by SHA256. CP/M and its derivatives are freely
 distributable per the 2022-07-07 grant by Bryan Sparks (DRDOS, Inc.);
-see os/cpm/LICENSES.md and vendor/cpm22/LICENSE.txt after fetching.
+see LICENSES.md and vendor/cpm22/LICENSE.txt after fetching.
 
 vendor/ is gitignored: this script is the reproducible way to populate it.
 """

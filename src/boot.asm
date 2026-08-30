@@ -130,7 +130,7 @@ coldinit_banner_loop:
 
 coldinit_banner:
         defb    "MZ-2500 CP/M 2.2 (58K)",0dh,0ah
-        defb    "EMM/SASI port project",0dh,0ah,0ah,0
+        defb    "EMM/SASI port v1.3.2",0dh,0ah,0ah,0
 
  if $>=0d200h
         defs    BAD_coldinit_overflows_into_ccp
