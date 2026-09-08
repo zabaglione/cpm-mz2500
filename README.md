@@ -107,6 +107,16 @@ EH-SASI環境へ新規イメージとして導入します。
 - RTCのアラーム・周期割込みは利用しません。エミュレータではRP5C15への書込対応が必要です。
 - 過去のゲーム動作確認は2.2版の記録です。[ゲームカタログ](GAMES.md)を参照してください。
 
+## 旧HDDの実機移行
+
+`make migration`で移行用起動FDと`MIGRATE.COM`を生成できます（SDCCが必要）。
+複数FDへの退避・全巻検証・HDD復元を行います。[操作手順](docs/migration.md)を参照してください。
+
+移行FDにはドライブ指定式の`FORMAT.COM`も同梱しています。未フォーマット2DD FDを
+`FORMAT A:`／`FORMAT B:`で640KB形式に準備し、全セクターの読戻しを検証できます。実機動作は未検証です。
+
+移行キットのビルド済みZIPは[Webエミュレータの配布ページ](https://zabaglione.github.io/mz2500-web-emulator/mz2500-migration-kit.zip)から取得できます。
+
 ## ライセンス
 
 移植コードはMIT、CP/M PlusおよびDRI製品はDRDOS, Inc.の2022-07-07許諾によります。

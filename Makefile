@@ -19,7 +19,10 @@ disks:
 test:
 	$(PYTHON) -m unittest discover -s tests
 
+migration: disks
+	$(PYTHON) tools/make_migration_disk.py
+
 clean:
 	rm -rf build
 
-.PHONY: all fetch disks test clean
+.PHONY: all fetch disks test migration clean

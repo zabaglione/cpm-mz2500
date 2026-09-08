@@ -37,3 +37,10 @@
 
 ## 本移植分（src/ と tools/ のオリジナル部分）
 - MIT License（LICENSE を参照）
+
+## MIGRATE.COMのSDCCランタイム
+
+SDCC 4.6.0でビルドし、整数演算等のZ80ランタイムをリンクします。SDCCランタイムは
+GPL-2.0-or-laterと、SDCCでコンパイルしたコードとのリンクに関する例外に従います。
+該当ライブラリの著作権・例外文はSDCC配布物の`lib/src/z80/`等にあります。
+移行ツール本体の新規コードは本プロジェクトのMIT Licenseです。
