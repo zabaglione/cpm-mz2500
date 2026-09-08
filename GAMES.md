@@ -9,12 +9,13 @@ MZ-2500版CP/M 2.2で**実際に動作確認したゲーム**の一覧と、遊�
 
 ## 使い方（共通）
 
-必要なのは **Python 3 だけ**です（CP/M本体はローカルでビルド済みなら
-それを、なければリリース版を自動取得します）:
+Plus版では **Python 3とz80asm**が必要です。`make fetch`を実行してから
+作成してください。CP/M Plus上での各ゲームの動作は未検証です:
 
 ```
 git clone https://github.com/zabaglione/cpm-mz2500.git
 cd cpm-mz2500
+make fetch
 python3 tools/make_game_disk.py --list      # カタログ表示
 python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
 ```
@@ -30,7 +31,7 @@ python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
 - **実機で** — READMEの「実機で — フロッピー」の手順どおり書き込んで
   起動し、`A>` に起動コマンドを入力
 
-## 動作確認済みタイトル
+## 2.2版での動作確認記録
 
 | ビルド名 | タイトル（年） | ジャンル | 起動コマンド | 操作 |
 |---|---|---|---|---|

@@ -1,19 +1,13 @@
-; MZ-2500 CP/M boot image, bank 06 front: handoff stub + font + cold-init
-; overlay. The IPL loads two 8KB banks (06h -> C000h-DFFFh image,
-; 07h -> E000h-FFFFh image) and jumps here at C000h with CPU blocks 0-6
-; already mapped to banks 00h-06h and block 7 still on the firmware's 0Fh.
-;
-; Layout of this assembly unit (one binary, C000h..):
-;   C000h  stub (below)
-;   C100h  console font (96 x 8 bytes, generated)
-;   C400h  cold-init overlay (one-shot; the space becomes TPA afterwards)
-; CCP (D200h) and BDOS (DA00h) are separate binaries; make_boot_d88.py
-; splices everything into the bank images.
+; Native MZ-2500 CP/M Plus IPLPRO bootstrap.
+; IPL loads physical banks 05h/06h/07h and enters A000h. Block 7 is
+; still mapped to firmware bank 0Fh until boot_stub switches it to 07h.
+; A100h: font. A400h: one-shot cold initialization. These become TPA.
+; make_boot_d88.py places CCP at B000h and the resident BDOS at C700h.
 
 BIOS_BOOT:      equ 0e800h
 BIOS_CONOUT:    equ 0e80ch      ; jump-table entry #4 (boot,wboot,const,conin,conout)
 
-        org     0c000h
+        org     0a000h
 
 boot_stub:
         di
@@ -27,7 +21,7 @@ boot_stub:
         ld      a,018h
         out     (0a1h),a
         out     (0a3h),a
-        ld      sp,0c000h       ; empty TPA below us: safe scratch stack
+        ld      sp,0a000h       ; empty TPA below us: safe scratch stack
         ; map CPU block 7 (E000h-FFFFh) from the firmware's 0Fh onto our
         ; bank 07h, where the BDOS tail and the BIOS were just loaded
         ld      a,7
@@ -36,17 +30,17 @@ boot_stub:
         out     (0b5h),a
         jp      BIOS_BOOT
 
-        defs    0c100h-$,0
+        defs    0a100h-$,0
 
 ; --- console font (referenced by the cold-init overlay) ----------------
         include "generated_font.inc"
 
-        defs    0c400h-$,0
+        defs    0a400h-$,0
 
 ; --- one-shot cold-init overlay ---------------------------------------
 ; Runs once from BIOS boot (on the BIOS stack, which lives in bank 07h,
 ; so CPU block 2 can be swapped without the stack tricks the resident
-; BIOS needs). Afterwards C400h-D1FFh is plain TPA.
+; BIOS needs). Afterwards A400h-AFFFh is plain TPA.
 coldinit:
         ; 8255: explicit mode word (A/C out, B in), then the proven idle
         ; port C value 58h (BST=1 idle, NST=0 - bit1's rising edge would
@@ -129,9 +123,9 @@ coldinit_banner_loop:
         jr      coldinit_banner_loop
 
 coldinit_banner:
-        defb    "MZ-2500 CP/M 2.2 (58K)",0dh,0ah
-        defb    "EMM/SASI port v1.3.2",0dh,0ah,0ah,0
+        defb    "MZ-2500 CP/M Plus (nonbanked)",0dh,0ah
+        defb    "EMM/SASI port v3.0.0",0dh,0ah,0ah,0
 
- if $>=0d200h
+ if $>=0b000h
         defs    BAD_coldinit_overflows_into_ccp
  endif

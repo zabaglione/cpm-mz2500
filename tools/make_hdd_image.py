@@ -15,7 +15,7 @@ sources and the ROM's own default table):
              (all zero = no retract), 4 reserved
 
 Layout here: HD1 = CP/M C: at LBA 32, HD2 = CP/M D: at LBA 32+32768,
-both 32768 blocks (8MB), no priority boot yet (that is the M4 milestone).
+both 32768 blocks (8MB); HD1 has priority boot when a system is present.
 """
 
 from __future__ import annotations
@@ -59,31 +59,27 @@ def partition_entry(ctrl: int, capacity: int, sasi_id: int, lun: int,
 
 
 def write_boot_area(image: bytearray) -> bool:
-    """Make HD1 bootable through the device-boot contract (measured):
-    the IPL reads the IPLPRO record at partition record 0, then one
-    contiguous READ of banks*32 records starting at the record named by
-    header offset +1E (16): bank06 image at records 16..47, bank07 at
-    48..79. The bank07 copy gets boot_drive_default patched to 2 so the
-    booted system lands on C: instead of an empty floppy."""
+    """Write the native Plus IPLPRO header and its three contiguous banks."""
     import json
     import make_boot_d88
     build_dir = PROJECT / "build"
-    b06 = build_dir / "cpm_bank06.bin"
-    b07 = build_dir / "cpm_bank07.bin"
     layout_file = build_dir / "cpm_layout.json"
-    if not (b06.is_file() and b07.is_file() and layout_file.is_file()):
-        print("note: bank images missing (run make_boot_d88.py first) - "
-              "building a data-only image")
-        return False
+    if not layout_file.is_file():
+        raise SystemExit("missing system layout; build the boot floppy first")
     layout = json.loads(layout_file.read_text())
-    bank06 = b06.read_bytes()
-    bank07 = bytearray(b07.read_bytes())
-    bank07[layout["boot_drive_default"] - 0xE000] = 2  # boot to C:
-
+    banks = [bytearray((build_dir / f"cpm_bank{bank:02x}.bin").read_bytes())
+             for bank in layout["banks"]]
+    def patch(address, value):
+        offset = address - make_boot_d88.BOOT_BASE
+        banks[offset // 0x2000][offset % 0x2000] = value
+    patch(layout["boot_drive_default"], 2)
     base = dg.SASI_BASE_C * BLOCK
-    image[base:base + BLOCK] = make_boot_d88.make_ipl_header()
-    image[base + 16 * BLOCK:base + 48 * BLOCK] = bank06
-    image[base + 48 * BLOCK:base + 80 * BLOCK] = bank07
+    image[base:base+BLOCK] = make_boot_d88.make_ipl_header()
+    payload = b"".join(banks)
+    start = base + 16 * BLOCK
+    if 16*BLOCK + len(payload) > dg.SASI.off * dg.SASI.spt * 128:
+        raise SystemExit("boot banks overlap the filesystem")
+    image[start:start+len(payload)] = payload
     return True
 
 
@@ -119,13 +115,10 @@ def build(output: pathlib.Path, with_files: bool, bootable: bool) -> None:
         if not with_files:
             continue
         if role == "system":
-            vendor = PROJECT / "vendor" / "cpm22" / "bin"
-            for name in ("PIP.COM", "STAT.COM", "ED.COM", "ASM.COM",
-                         "DDT.COM", "SUBMIT.COM", "DUMP.COM", "LOAD.COM",
-                         "XSUB.COM"):
-                path = vendor / name
-                if path.is_file():
-                    fs.add_file(name, path.read_bytes())
+            import make_boot_d88
+            vendor = PROJECT / "vendor" / "cpm3" / "bin"
+            for name in make_boot_d88.DRI_UTILITIES:
+                fs.add_file(name, (vendor / name.lower()).read_bytes())
             putsys = PROJECT / "build" / "putsys.com"
             if putsys.is_file():
                 fs.add_file("PUTSYS.COM", putsys.read_bytes())

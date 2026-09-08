@@ -15,12 +15,10 @@ class ProjectPathsTest(unittest.TestCase):
     def test_cpmtools_stays_inside_repository(self):
         self.assertEqual(fetch_tools.VENDOR, REPO / "vendor" / "cpmtools")
 
-    def test_boot_banner_matches_download_release(self):
-        boot_source = (REPO / "src" / "boot.asm").read_text()
+    def test_game_builder_uses_current_system(self):
         game_builder = (REPO / "tools" / "make_game_disk.py").read_text()
-        match = re.search(r"EMM/SASI port (v\d+\.\d+\.\d+)", boot_source)
-        self.assertIsNotNone(match)
-        self.assertIn(f'"{match.group(1)}/cpm_boot.d88"', game_builder)
+        self.assertIn("make_boot_d88.build_disk(boot, True)", game_builder)
+        self.assertNotIn("BOOT_URL", game_builder)
 
 
 if __name__ == "__main__":

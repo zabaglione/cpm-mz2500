@@ -1,28 +1,14 @@
 # ライセンスと出自
 
-## CP/M 2.2 本体 (CCP/BDOS) と DRI ユーティリティ
-- 出自: Digital Research, Inc. (1976-1980)。権利はDRDOS, Inc.が承継。
-- 許諾: 2022-07-07、DRDOS, Inc. 代表 Bryan Sparks 氏による声明
-  （原文は取得される vendor/cpm22/LICENSE.txt =
-  [The Unofficial CP/M Web Site](http://www.cpm.z80.de/license.html) より）:
-  "Let this paragraph represent a right to use, distribute, modify,
-  enhance, and otherwise make available in a nonexclusive manner CP/M and
-  its derivatives."
-- 取得: `tools/fetch_cpm22.py` がSHA256検証付きでダウンロードします。
-  - ソース: [brouhaha/cpm22](https://github.com/brouhaha/cpm22)
-    （Eric Smith氏によるクロスアセンブル向け再整形。実CP/M 2.2ディスクと
-    バイト一致することが検証されている系譜）
-  - バイナリ: cpm.z80.de の cpm22-b.zip（Xerox 1800用配布ディスク）。
-    同梱のCPM.SYSは変換検証の参照としてのみ使用。
-- 本リポジトリでの改変:
-  - `tools/convert_cpm22.py` によるアセンブラ構文の機械変換
-    （意味的変更なし。`tests/test_vendor_match.py` が参照バイナリとの
-    バイト一致をシリアル6バイトを除いて保証）
-  - シリアルナンバーは0埋め
-  - 配布イメージでは BDOS ファンクション13 の JMP 先を1箇所BIOS内へ
-    差し替え（リセット時の初期選択ドライブをA:固定→カレントドライブに。
-    ハードディスク運用でウォームブート毎にフロッピーが回るのを防ぐため。
-    カレントドライブがA:のときの挙動はストックと同一）
+## CP/M Plus（CCP/BDOS）とDRIユーティリティ
+
+- 著作権: Digital Research / DRDOS, Inc.。2022-07-07のBryan Sparks氏による
+  CP/Mと派生物の再配布・改変許諾。原文は取得後の`vendor/cpm3/LICENSE.txt`。
+- 配布元: [Digital Research CP/M releases](https://www.seasip.info/Cpm/software/dri.html)。
+  `cpm3bin_unix.zip`と`cpm3src_unix.zip`を`tools/fetch_cpm3.py`がSHA256照合付きで取得。
+- 使用: 非バンク版`bdos3.spr`、`ccp.com`、標準ユーティリティ。
+- 本移植で行う処理: SPRのアドレス再配置とSCB設定。DRIの命令列やシリアルを
+  任意変更するパッチは使用しない。ソース・バイナリは`vendor/`に取得し、Gitには含めない。
 
 ## 言語/開発ツール群（`tools/fetch_tools.py` がSHA256検証付きでダウンロード）
 - **DRI製品** — MAC、RMAC/LINK/LIB/XREF/Z80.LIB、ZSID、Pascal/MT+ 5.6.1、

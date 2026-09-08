@@ -1,6 +1,6 @@
-; MZ-2500 CP/M 2.2 BIOS (resident part), org 0E800h.
+; MZ-2500 CP/M Plus BIOS (nonbanked), org 0E800h.
 ;
-; 58K layout: CCP=D200h, BDOS=DA00h (entry DA06h), BIOS=E800h.
+; Layout: CCP=0100h, BDOS=C700h (entry C706h), BIOS=E800h.
 ; Runs with interrupts permanently disabled (DI + polling: the FDC INTRQ is
 ; not wired to the CPU and half the commercial titles ship DI+polling).
 ; IM 1 is set and 0038h holds JP WBOOT purely as a recovery net.
@@ -20,10 +20,10 @@
 ; Keyboard: matrix scan on E8h/EAh; E8h writes always keep bit5=1 (80-column
 ; mode lives on the same latch as the strobe).
 
-CCP:            equ 0d200h
-BDOS_ENTRY:     equ 0da06h
+CCP:            equ 00100h
+BDOS_ENTRY:     equ 0c706h
 BIOS_BASE:      equ 0e800h
-COLDINIT:       equ 0c400h      ; one-shot overlay (reclaimed as TPA)
+COLDINIT:       equ 0a400h      ; one-shot overlay (reclaimed as TPA)
 
 NUM_DRIVES:     equ 5           ; A:,B: FD  C:,D: SASI  E: EMM
 
@@ -65,7 +65,7 @@ ATTR_STANDOUT_BIT: equ 040h     ; the reverse bit alone
 
         org     BIOS_BASE
 
-; --- BIOS jump table (order fixed by CP/M 2.2) -------------------------
+; --- BIOS jump table (order fixed by CP/M Plus) -------------------------
         jp      boot            ; cold boot
 wboote: jp      wboot           ; warm boot
         jp      const           ; console status
@@ -83,6 +83,22 @@ wboote: jp      wboot           ; warm boot
         jp      write           ; write 128-byte record
         jp      listst          ; printer status
         jp      sectran         ; sector translate
+        jp      ready           ; CONOST
+        jp      not_ready       ; AUXIST (no auxiliary device)
+        jp      not_ready       ; AUXOST
+        jp      devtbl
+        jp      noop            ; DEVINI
+        jp      drvtbl
+        jp      noop            ; MULTIO: one record per READ/WRITE
+        jp      flush
+        jp      move
+        jp      noop            ; TIME: no RTC support
+        jp      noop            ; SELMEM: nonbanked system
+        jp      noop            ; SETBNK
+        jp      noop            ; XMOVE
+        jp      0
+        jp      0
+        jp      0
 
 ; ======================================================================
 ; cold / warm boot
@@ -100,12 +116,13 @@ boot:
         ; the hard disk instead of an empty floppy drive
         ld      a,(boot_drive_default)
         ld      (00004h),a
+        ld      (SCB+013h),a    ; CCP cold-start drive
         ld      hl,0
         ld      (scroll_base),hl
         call    COLDINIT        ; one-shot HW init + banner (overlay)
         call    emm_probe
         call    emm_disk_init
-        call    emm_seed        ; warm-boot cache: CCP+BDOS into the EMM
+        call    cache_ccp       ; reserve main RAM bank 08h for the CCP
         ld      a,(emm_present)
         or      a
         jr      z,boot_no_emm
@@ -155,7 +172,7 @@ wboot_bank_loop:
         ld      a,020h
         out     (PORT_KEY_STROBE),a
         call    set_crtc_base
-        call    reload_system   ; CCP+BDOS from cylinder 1 (EMM comes in M2)
+        ; BDOS remains resident; only CCP is reloaded below.
 boot_common:
         ; zero page: JP WBOOT / IOBYTE / current disk / JP BDOS / IM1 net
         ld      a,0c3h
@@ -167,7 +184,7 @@ boot_common:
         ld      (00038h),a
         ld      a,0c3h
         ld      (00005h),a
-        ld      hl,BDOS_ENTRY
+        ld      hl,(SCB+062h) ; preserve CP/M Plus loader/RSX chain
         ld      (00006h),hl
         xor     a
         ld      (00003h),a      ; IOBYTE
@@ -181,6 +198,7 @@ boot_common:
         xor     a
         ld      (00004h),a
 boot_disk_ok:
+        call    reload_ccp
         ld      a,(00004h)
         ld      c,a
         jp      CCP
@@ -188,87 +206,72 @@ boot_disk_ok:
 wboot_bankmap:
         defb    000h,001h,002h,003h,004h,005h,006h,007h
 
-; Reload CCP+BDOS (1600h bytes at D200h): from the EMM warm-boot cache
-; when it verifies (checksum guards against programs scribbling on the
-; EMM), else from the FD system area - both halves on cylinder 1
-; (D200h-DFFFh = C1/H1/R3..R16, E000h-E7FFh = C1/H0/R1..R8, one seek).
-reload_system:
-        call    emm_restore
-        ret     nc              ; warm image verified and restored
-        call    sasi_reload_system
-        jr      c,reload_try_fd
-        jp      emm_seed        ; HD copy is good: re-seed the cache
-reload_try_fd:
-        call    reload_from_fd
+SCB:            equ BIOS_BASE-0300h+09ch
+CCP_IMAGE:      equ 0b000h
+CCP_SIZE:       equ 0c80h
+
+; BOOT/WBOOT run on the resident stack. The CCP cache uses main RAM
+; bank 08h (standard MZ-2500 RAM), independent of the optional EMM.
+cache_ccp:
+        ld      a,2
+        out     (PORT_BANK_SEL),a
+        ld      a,8
+        out     (PORT_BANK_VAL),a
+        ld      hl,CCP_IMAGE
+        ld      de,04000h
+        ld      bc,CCP_SIZE
+        ldir
+        jr      ccp_window_close
+reload_ccp:
+        ld      a,2
+        out     (PORT_BANK_SEL),a
+        ld      a,8
+        out     (PORT_BANK_VAL),a
+        ld      hl,04000h
+        ld      de,CCP
+        ld      bc,CCP_SIZE
+        ldir
+ccp_window_close:
+        ld      a,2
+        out     (PORT_BANK_SEL),a
+        out     (PORT_BANK_VAL),a
+        ret
+
+ready:
+        ld      a,0ffh
+        ret
+not_ready:
+        xor     a
+noop:
+        ret
+flush:
+        call    flush_host
+        ld      a,1
         ret     c
-        jp      emm_seed        ; FD copy is good: re-seed the cache
-reload_from_fd:
-        xor     a
-        ld      (fd_drive),a
-        call    fd_select
-        ld      a,1
-        call    fd_seek_cyl
-        jr      c,reload_error
-        ld      a,1
-        ld      (fd_side),a
-        ld      a,3
-        ld      (fd_sec),a
-        ld      hl,0d200h
-        ld      b,14
-reload_loop1:
-        push    bc
-        call    fd_read_retry
-        pop     bc
-        jr      c,reload_error
-        inc     h               ; +256
-        ld      a,(fd_sec)
-        inc     a
-        ld      (fd_sec),a
-        djnz    reload_loop1
-        xor     a
-        ld      (fd_side),a
-        ld      a,1
-        ld      (fd_sec),a
-        ld      hl,0e000h
-        ld      b,8
-reload_loop2:
-        push    bc
-        call    fd_read_retry
-        pop     bc
-        jr      c,reload_error
-        inc     h
-        ld      a,(fd_sec)
-        inc     a
-        ld      (fd_sec),a
-        djnz    reload_loop2
         xor     a
         ret
-reload_error:
-        ld      hl,msg_boot_err
-        call    print_string
-        call    conin           ; any key: try again
-        jr      reload_from_fd
+move:
+        ld      a,b
+        or      c
+        ret     z
+        ex      de,hl
+        ldir
+        ex      de,hl
+        ret
+devtbl:
+        ld      hl,0            ; character-device reassignment unsupported
+        ret
+drvtbl:
+        ld      hl,drive_table
+        ret
 
-msg_boot_err:
-        defb    0dh,0ah,"BOOT ERR - CHECK DISK, HIT KEY",0dh,0ah,0
 msg_emm_ready:
-        defb    "E: EMM RAM DISK (620K) + FAST WARM BOOT",0dh,0ah,0
+        defb    "E: EMM RAM DISK (620K)",0dh,0ah,0
 msg_sasi_ready:
         defb    "C: D: SASI HARD DISK (8M x 2)",0dh,0ah,0
 ; patched to 2 by make_hdd_image.py inside the hard-disk boot copy
 boot_drive_default:
         defb    0
-
-; BDOS function 13 (disk reset - the CCP calls it on every warm boot)
-; hard-selects drive A: in the stock kernel, which spins the floppy up
-; before every prompt on a hard-disk system. make_boot_d88.py redirects
-; func13's final "jp select" here and fills this stub with
-;   ld a,(0004h) / and 0fh / ld (curdsk),a / jp select
-; so the reset re-selects the CURRENT drive - byte-identical behaviour
-; to stock whenever the current drive IS A:. The addresses live inside
-; the BDOS, so the builder assembles these 11 bytes itself.
-bdos_reset_hook:
-        defs    16
 
 ; State shared by cold and warm boot. Everything the BIOS reads must be
 ; written here or in boot before first use (warm-boot contract: no RAM
@@ -291,7 +294,8 @@ init_common_state:
         ld      (hst_valid),a
         ld      (hst_dirty),a
         ld      (unacnt),a
-        ld      (seldsk_cur),a
+        ; CP/M Plus keeps its current disk across WBOOT. Preserve
+        ; seldsk_cur so the BIOS and resident BDOS continue to agree.
         xor     a
         ld      (fd_not_ready),a
         ld      (fd_absent_mask),a      ; re-probe drives after ^C (media swap)
@@ -1857,61 +1861,6 @@ sasi_read_hd1:
         pop     hl
         ret
 
-; warm-boot reload from the hard-disk system area. The partition's boot
-; record (partition record 0, "IPLPRO") authenticates the copy; then
-; CCP+BDOS come from records 34..47 (-> D200h) and 48..55 (-> E000h),
-; mirroring the bank layout the device boot loaded.
-sasi_reload_system:
-        ld      a,(sasi_present)
-        or      a
-        jr      z,sasi_rl_fail
-        ld      de,0
-        ld      hl,hstbuf
-        call    sasi_read_hd1
-        jr      c,sasi_rl_fail
-        xor     a
-        ld      (hst_valid),a
-        ld      hl,hstbuf+1
-        ld      de,sasi_iplpro_sig
-        ld      b,6
-sasi_rl_sig:
-        ld      a,(de)
-        cp      (hl)
-        jr      nz,sasi_rl_fail
-        inc     hl
-        inc     de
-        djnz    sasi_rl_sig
-        ld      de,34
-        ld      hl,0d200h
-        ld      b,14
-sasi_rl_loop1:
-        push    bc
-        call    sasi_read_hd1
-        pop     bc
-        jr      c,sasi_rl_fail
-        inc     h
-        inc     de
-        djnz    sasi_rl_loop1
-        ld      de,48
-        ld      hl,0e000h
-        ld      b,8
-sasi_rl_loop2:
-        push    bc
-        call    sasi_read_hd1
-        pop     bc
-        jr      c,sasi_rl_fail
-        inc     h
-        inc     de
-        djnz    sasi_rl_loop2
-        xor     a
-        ret
-sasi_rl_fail:
-        scf
-        ret
-
-sasi_iplpro_sig:
-        defb    "IPLPRO"
-
 ; cold-boot probe: TEST UNIT READY on ID 0 must select and return 00h
 sasi_probe:
         xor     a
@@ -1930,7 +1879,7 @@ sasi_probe_zero:
         ret
 
 ; ======================================================================
-; EMM (MZ-1R37 640KB) - warm-boot cache + RAM disk E:
+; EMM (MZ-1R37 640KB) - RAM disk E:
 ;
 ; ACh write latches address[19:16] from bus A15-A8 (register B of an
 ; OUT (C),A) and address[15:8] from the data byte; ADh then reads/writes
@@ -1938,16 +1887,13 @@ sasi_probe_zero:
 ; address byte, so INI/OUTI/INIR/OTIR (which decrement B) are forbidden -
 ; every transfer is an explicit in a,(c)/out (c),a loop.
 ;
-; Layout: 0x00000 header block ("CPM22WB1" + len + checksum16),
-; 0x00100-0x016FF CCP+BDOS warm image, 0x03F00 RAM-disk label block
+; Layout: 0x00000 probe scratch, 0x03F00 RAM-disk label block
 ; ("EMMDISK1"), 0x04000+ drive E: data (BDOS track 2 onward, OFF=2).
 ; EMM contents survive RESET (no reset line), so the label decides
 ; between "format" (power-on zeroes) and "preserve files".
 ; ======================================================================
 EMM_ADDR_PORT:  equ 0ach
 EMM_DATA_PORT:  equ 0adh
-EMM_WARM_PAGE:  equ 001h        ; addr[15:8] of the warm image (hi=0)
-EMM_WARM_PAGES: equ 016h        ; 1600h bytes
 EMM_LABEL_PAGE: equ 03fh
 
 ; latch addr[19:16]=D, addr[15:8]=E
@@ -2036,101 +1982,6 @@ emm_probe:
         ld      (emm_present),a
         ret
 
-; cold/warm seed: copy D200h-E7FFh into the warm area and stamp the header
-emm_seed:
-        ld      a,(emm_present)
-        or      a
-        ret     z
-        ld      hl,0d200h
-        ld      d,0
-        ld      e,EMM_WARM_PAGE
-        ld      bc,0
-emm_seed_loop:
-        push    de
-        call    emm_write_page
-        pop     de
-        inc     e
-        ld      a,e
-        cp      EMM_WARM_PAGE+EMM_WARM_PAGES
-        jr      c,emm_seed_loop
-        ; header block via hstbuf (invalidated below)
-        push    bc
-        ld      hl,hstbuf
-        ld      de,emm_signature
-        ex      de,hl
-        ld      bc,8
-        ld      de,hstbuf
-        ldir
-        pop     bc
-        ld      hl,hstbuf+8
-        ld      (hl),EMM_WARM_PAGES     ; length in pages
-        inc     hl
-        ld      (hl),0
-        inc     hl
-        ld      (hl),c                  ; checksum16
-        inc     hl
-        ld      (hl),b
-        ld      hl,hstbuf
-        ld      d,0
-        ld      e,0
-        ld      bc,0
-        call    emm_write_page
-        xor     a
-        ld      (hst_valid),a
-        ld      (hst_dirty),a
-        ret
-
-; warm-boot restore: header valid + checksum match -> copy back, CF clear.
-emm_restore:
-        ld      a,(emm_present)
-        or      a
-        jr      z,emm_restore_fail
-        ld      hl,hstbuf
-        ld      d,0
-        ld      e,0
-        ld      bc,0
-        call    emm_read_page
-        xor     a
-        ld      (hst_valid),a
-        ld      hl,hstbuf
-        ld      de,emm_signature
-        ld      b,8
-emm_restore_sig:
-        ld      a,(de)
-        cp      (hl)
-        jr      nz,emm_restore_fail
-        inc     hl
-        inc     de
-        djnz    emm_restore_sig
-        ld      a,(hstbuf+8)
-        cp      EMM_WARM_PAGES
-        jr      nz,emm_restore_fail
-        ld      hl,0d200h
-        ld      d,0
-        ld      e,EMM_WARM_PAGE
-        ld      bc,0
-emm_restore_loop:
-        push    de
-        call    emm_read_page
-        pop     de
-        inc     e
-        ld      a,e
-        cp      EMM_WARM_PAGE+EMM_WARM_PAGES
-        jr      c,emm_restore_loop
-        ld      a,(hstbuf+10)
-        cp      c
-        jr      nz,emm_restore_fail
-        ld      a,(hstbuf+11)
-        cp      b
-        jr      nz,emm_restore_fail
-        xor     a
-        ret
-emm_restore_fail:
-        scf
-        ret
-
-emm_signature:
-        defb    "CPM22WB1"
 emm_label:
         defb    "EMMDISK1"
 
@@ -2552,23 +2403,52 @@ fd_write_done:
 ; disk parameter headers (A:, B: share the FD DPB; separate ALV/CSV)
 ; ======================================================================
 dph_table:
-        defw    dph_a,dph_b
+drive_table:
+        defw    dph_a,dph_b,dph_c,dph_d,dph_e
+        defs    22,0
 
+; CP/M 3 DPH: XLT, scratch[9], media flag, DPB, CSV, ALV,
+; directory BCB, data BCB, hash table (FFFF = disabled), hash bank.
 dph_a:
-        defw    0,0,0,0
-        defw    dirbuf,dpb_fd,csv_a,alv_a
+        defw    0
+        defs    10,0
+        defw    dpb_fd,csv_a,alv_a,dir_bcb,data_bcb,0ffffh
+        defb    0
 dph_b:
-        defw    0,0,0,0
-        defw    dirbuf,dpb_fd,csv_b,alv_b
-dph_e:
-        defw    0,0,0,0
-        defw    dirbuf,dpb_emm,csv_e,alv_e
+        defw    0
+        defs    10,0
+        defw    dpb_fd,csv_b,alv_b,dir_bcb,data_bcb,0ffffh
+        defb    0
 dph_c:
-        defw    0,0,0,0
-        defw    dirbuf,dpb_sasi,csv_c,alv_c
+        defw    0
+        defs    10,0
+        defw    dpb_sasi,csv_c,alv_c,dir_bcb,data_bcb,0ffffh
+        defb    0
 dph_d:
-        defw    0,0,0,0
-        defw    dirbuf,dpb_sasi,csv_d,alv_d
+        defw    0
+        defs    10,0
+        defw    dpb_sasi,csv_d,alv_d,dir_bcb,data_bcb,0ffffh
+        defb    0
+dph_e:
+        defw    0
+        defs    10,0
+        defw    dpb_emm,csv_e,alv_e,dir_bcb,data_bcb,0ffffh
+        defb    0
+
+; Nonbanked BDOS uses one BCB per class, shared across all drives.
+; BIOS presents 128-byte records and handles physical 256-byte sectors.
+dir_bcb:
+        defb    0ffh
+        defs    9,0
+        defw    dirbuf
+        defb    0
+        defw    0
+data_bcb:
+        defb    0ffh
+        defs    9,0
+        defw    databuf
+        defb    0
+        defw    0
 
 ; ======================================================================
 ; data (all initialised by code before first use)
@@ -2627,6 +2507,7 @@ fd_target_cyl:  defs 1
 fd_cyl_cache:   defs 2
 fd_tries:       defs 1
 fd_world:       defs 1
+databuf:        defs 128
 dirbuf:         defs 128
 csv_a:          defs DPB_FD_CSV_BYTES
 csv_b:          defs DPB_FD_CSV_BYTES

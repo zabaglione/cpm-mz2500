@@ -6,8 +6,7 @@ onto YOUR machine (every fetch is SHA256-pinned) and combines it with
 the CP/M boot floppy - nothing is redistributed by this project. Treat
 disks built from titles without a clear license as private copies.
 
-Needs only Python 3: without a local CP/M build the released boot disk
-is downloaded instead, so no assembler is required.
+Requires the same Python 3 / z80asm toolchain and fetched inputs as make disks.
 
   make_game_disk.py --list             show the catalogue
   make_game_disk.py ladder             build build/ladder.d88
@@ -38,9 +37,7 @@ from d88 import D88Image  # noqa: E402
 
 VENDOR = PROJECT / "vendor" / "games"
 # without a local build (no z80asm needed), the released boot disk is used
-BOOT_URL = ("https://github.com/zabaglione/cpm-mz2500/releases/download/"
-            "v1.3.2/cpm_boot.d88")
-BOOT_SHA256 = "16e1212332a0943aaac4aa0ba5bf73d1cf8e2de46248bedfdfff92dd2d31d3f5"
+
 
 DERAMP = ("https://deramp.com/downloads/mfe_archive/040-Software/"
           "Digital%20Research/CPM%20Implementations/COMPUPRO/GAMES/")
@@ -633,12 +630,10 @@ def fetch_pinned(url: str, digest: str) -> bytes:
 
 
 def boot_disk() -> pathlib.Path:
+    """Build the current Plus image; never reuse a CP/M 2.2 release."""
+    import make_boot_d88
     boot = PROJECT / "build" / "cpm_boot.d88"
-    if boot.is_file():
-        return boot
-    print("no local CP/M build - downloading the released boot disk...")
-    boot.parent.mkdir(parents=True, exist_ok=True)
-    boot.write_bytes(fetch_pinned(BOOT_URL, BOOT_SHA256))
+    make_boot_d88.build_disk(boot, True)
     return boot
 
 

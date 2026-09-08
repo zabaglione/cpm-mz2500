@@ -7,13 +7,13 @@ Run this file to (re)generate src/generated_dpb.inc.
 
 Layouts (see the plan for the full derivation):
 - FD 2DD: 80 cyl x 2 heads x 16 x 256B. One CP/M track = one physical
-  (cyl, side); track number = cyl*2 + side. Cylinders 0-2 are the system
-  area (IPL banks + boot header + CCP/BDOS/BIOS image) -> OFF=6.
+  (cyl, side); track number = cyl*2 + side. Cylinders 0-3 are the system
+  area (IPL banks + boot header + CCP/BDOS/BIOS image) -> OFF=8.
 - EMM MZ-1R37 640KB: 8KB tracks; tracks 0-1 (16KB) hold the warm-boot
   image -> OFF=2. CKS=0 (non-removable).
 - SASI: one CP/M drive = one 8MB partition (32768 x 256B blocks). 8KB
-  tracks; tracks 0-2 (24KB) hold the boot area (IPLPRO record at
-  partition block 0, bank images from block 16) -> OFF=3.
+  tracks; tracks 0-3 (32KB) hold the boot area (IPLPRO record at
+  partition block 0, bank images from block 16) -> OFF=4.
 """
 
 from __future__ import annotations
@@ -82,8 +82,8 @@ class Geometry:
 # --- FD 2DD (drives A:, B:) -------------------------------------------------
 FD = Geometry(
     name="fd",
-    comment="FD 2DD 80x2x16x256, cylinders 0-2 reserved for the system",
-    spt=32, bsh=4, dsm=307, drm=127, al0=0xC0, al1=0x00, cks=32, off=6,
+    comment="FD 2DD 80x2x16x256, cylinders 0-3 reserved for the system",
+    spt=32, bsh=4, dsm=303, drm=127, al0=0xC0, al1=0x00, cks=32, off=8,
     total_tracks=160,
 )
 
@@ -98,8 +98,8 @@ EMM = Geometry(
 # --- SASI 8MB partition (drives C:, D:) -------------------------------------
 SASI = Geometry(
     name="sasi",
-    comment="SASI 8MB partition (32768 x 256B), tracks 0-2 = boot area",
-    spt=64, bsh=5, dsm=2041, drm=1023, al0=0xFF, al1=0x00, cks=0, off=3,
+    comment="SASI 8MB partition (32768 x 256B), tracks 0-3 = boot area",
+    spt=64, bsh=5, dsm=2039, drm=1023, al0=0xFF, al1=0x00, cks=0, off=4,
     total_tracks=1024,
 )
 
@@ -136,6 +136,7 @@ def generate_include() -> str:
             f"\tdefb 0{g.al0:02x}h,0{g.al1:02x}h",
             f"\tdefw {g.cks}",
             f"\tdefw {g.off}",
+            "\tdefb 0,0 ; PSH/PHM: BIOS exposes 128-byte records",
             f"DPB_{g.name.upper()}_ALV_BYTES:\tequ {g.alv_bytes}",
             f"DPB_{g.name.upper()}_CSV_BYTES:\tequ {max(g.csv_bytes, 1)}",
         ]

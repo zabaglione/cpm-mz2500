@@ -5,7 +5,7 @@ all: disks
 # CP/M sources, DRI utilities, the console font and the language
 # suites (all SHA256-pinned)
 fetch:
-	$(PYTHON) tools/fetch_cpm22.py
+	$(PYTHON) tools/fetch_cpm3.py
 	$(PYTHON) tools/fetch_tools.py
 
 disks:

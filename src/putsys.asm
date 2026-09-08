@@ -1,20 +1,9 @@
-; PUTSYS.COM - copy the CP/M system from the boot floppy onto the SASI
-; hard disk's boot area, so the HDD system can be updated without pulling
-; the SD card out of the drive.
-;
-; What it copies (via direct BIOS calls; every target lies in RESERVED
-; tracks - the C: filesystem and the partition table are never touched):
-;   FD LBA 16          -> HD1 partition record 0   (IPLPRO boot header)
-;   FD LBA 0-15,48-63  -> records 16-47            (bank06 image)
-;   FD LBA 32-47,80-95 -> records 48-79            (bank07 image)
-; In BIOS terms: drive A: tracks 0-5 (its OFF=6 system area) to drive C:
-; tracks 0-2 (its OFF=3 boot area), 128-byte record by record, with
-; write-type 1 (directory) so every record flushes to the disk at once.
-;
-; Usage: with the NEW boot floppy in drive A (either booted from it, or
-; inserted under the old hard-disk system):  PUTSYS
-; Then press the IPL button: the cold boot loads the new system from the
-; hard disk and re-seeds the EMM warm-boot cache.
+; PUTSYS.COM - update only the reserved boot area of an existing Plus HDD.
+; Both media must contain the native three-bank CP/M-PLUS IPLPRO header.
+; Requires CP/M Plus; CP/M 2.2 disks have a different reserved-track layout.
+; Source FD physical sectors: header 16; bank05 0/48; bank06 32/80;
+; bank07 64/112 (each bank half has 16 sectors). HDD banks begin at 16.
+; The header is copied last, then the boot-drive byte is patched to C:.
 
 BDOS:           equ 00005h
 BF_CONOUT:      equ 2
@@ -33,9 +22,9 @@ JT_WRITE:       equ 42
 
         include "generated_putsys.inc"
 
-; where the boot-drive byte lands on the hard disk (bank07 = records 48+)
+; where the boot-drive byte lands on the hard disk (bank07 = records 80+)
 BDD_OFF:        equ BOOT_DRIVE_BYTE_ADDR - 0e000h
-BDD_REC:        equ 48 + BDD_OFF / 256
+BDD_REC:        equ 80 + BDD_OFF / 256
 BDD_TRK:        equ BDD_REC / 32
 BDD_SEC:        equ (BDD_REC & 01fh) * 2 + (BDD_OFF & 0ffh) / 128
 BDD_BUFO:       equ BDD_OFF & 07fh
@@ -44,6 +33,10 @@ BDD_BUFO:       equ BDD_OFF & 07fh
 
 start:
         ld      sp,local_stack_top
+        ld      c,12
+        call    BDOS
+        cp      031h
+        jp      nz,wrong_system
         ld      de,msg_banner
         ld      c,BF_PRINT
         call    BDOS
@@ -54,6 +47,20 @@ start:
         or      l
         jp      z,no_hard_disk
 
+        ld      c,25
+        call    BDOS
+        ld      (original_drive),a
+        ld      c,48
+        ld      de,0
+        call    BDOS
+        or      a
+        jp      nz,io_error
+        ld      c,0
+        call    check_header
+        jp      nz,wrong_media
+        ld      c,2
+        call    check_header
+        jp      nz,wrong_media
         ld      ix,ranges
 next_range:
         ld      a,(ix+2)        ; sectors in this range
@@ -170,7 +177,62 @@ io_error:
 say_and_exit:
         ld      c,BF_PRINT
         call    BDOS
+        ld      c,13
+        call    BDOS
+        ld      a,(original_drive)
+        ld      e,a
+        ld      d,0
+        ld      c,14
+        call    BDOS
         jp      00000h          ; warm boot
+
+wrong_media:
+        ld      de,msg_wrong_media
+        jr      say_and_exit
+check_header:
+        ld      a,c
+        ld      (header_drive),a
+        call    bios_seldsk
+        ld      a,h
+        or      l
+        jr      z,header_failed
+        ld      a,(header_drive)
+        or      a
+        ld      bc,0
+        jr      nz,header_track_ready
+        inc     c
+header_track_ready:
+        call    bios_settrk
+        ld      bc,0
+        call    bios_setsec
+        ld      bc,buffer
+        call    bios_setdma
+        call    bios_read
+        or      a
+        ret     nz
+        jp      header_compare
+header_failed:
+        ld      a,1
+        or      a
+        ret
+header_compare:
+        ld      hl,buffer+1
+        ld      de,header_signature
+        ld      b,15
+header_compare_loop:
+        ld      a,(de)
+        cp      (hl)
+        ret     nz
+        inc      hl
+        inc      de
+        djnz    header_compare_loop
+        ld      a,(buffer+020h)
+        cp      5
+        ret
+header_signature: defb "IPLPROCP/M-PLUS"
+msg_wrong_media: defb "CP/M Plus boot media required on A: and C:",13,10,"$"
+original_drive: defb 0
+header_drive: defb 0
 
 ; --- BIOS trampolines --------------------------------------------------
 ; The offset rides in A so BC (the BIOS argument register) stays intact;
@@ -204,12 +266,22 @@ bios_call:
 ; --- data --------------------------------------------------------------
 ; (fd_lba_start, hd_record_start, sector_count) triplets, 0-count ends
 ranges:
-        defb    16,0,1          ; boot header
-        defb    0,16,16         ; bank06 first half
-        defb    48,32,16        ; bank06 second half
-        defb    32,48,16        ; bank07 first half
-        defb    80,64,16        ; bank07 second half
+        defb    0,16,16
+        defb    48,32,16
+        defb    32,48,16
+        defb    80,64,16
+        defb    64,80,16
+        defb    112,96,16
+        defb    16,0,1
         defb    0,0,0
+
+wrong_system:
+        ld      de,msg_wrong_system
+        ld      c,9
+        call    BDOS
+        jp      0
+msg_wrong_system:
+        defb    "CP/M Plus required; use a fresh Plus HDD image",13,10,"$"
 
 msg_banner:
         defb    0dh,0ah,"PUTSYS - floppy system -> hard disk boot area"

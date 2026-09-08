@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal CP/M 2.2 filesystem reader/writer.
+"""CP/M filesystem image builder/reader (user area 0).
 
 Driven by the same disk_geometry.Geometry the BIOS uses, so directory
 layout, block size and reserved tracks can never drift from the Z80 side.
@@ -10,8 +10,7 @@ Supports the three shapes this project needs:
 - FlatCpmAdapter: a byte-addressable area (EMM image, SASI partition).
 
 Only the features the project needs: format, add_file, read_file, ls.
-User areas other than 0 and timestamps are out of scope (CP/M 2.2 has no
-timestamps anyway).
+User areas other than 0 and CP/M Plus timestamp creation are out of scope.
 """
 
 from __future__ import annotations

@@ -1,185 +1,109 @@
-# CP/M 2.2 for SHARP MZ-2500
+# CP/M Plus for SHARP MZ-2500
 
-SHARP MZ-2500 で動く CP/M 2.2 です。DRI純正のCP/M 2.2（2022年に権利者が
-再配布・改変を許諾）を移植したもので、ビルド済みディスクイメージを
-そのまま使えます。
+SHARP MZ-2500向けのCP/M 3（CP/M Plus）移植です。MZ-2500移植版の番号は
+**v3.0.0**、使用するDRI純正BDOSの番号は **3.1** です。表示だけを変更した
+2.2版ではなく、BDOS・CCP・BIOSインタフェースをCP/M Plusへ置き換えています。
+以前のCP/M 2.2版は **v1.3.2タグ**に保存しています。
 
-- 58Kシステム（TPA 52.25KB）、80×25テキスト。画面制御はADM-3A互換に加えて
-  ANSI/VT100サブセット（`ESC[` のカーソル位置指定・消去・反転・カラー8色など）と
-  TeleVideo系の拡張コードにも対応 — VT100前提のソフトがそのまま動きます
-- **A:/B:** フロッピー（2DD 640KB）
-- **C:/D:** SASIハードディスク 8MB×2（MZ-1E30系インタフェース）
-- **E:** EMM RAMディスク 620KB（MZ-1R37）＋ 高速ウォームブート
-  （^Cやプログラム終了時にディスクを読み直しません。リセットしても
-  E: のファイルは消えません）
-- **ハードディスクからの起動に対応**（EH-SASI環境。フロッピー不要で
-  電源ON→`C>`）
-- PIP / STAT / ED / ASM / DDT / SUBMIT / DUMP / LOAD / XSUB を同梱
-- ハードディスク版は開発環境入り: **C:** に MAC / RMAC / LINK / LIB /
-  XREF / ZSID、**D:** に Pascal/MT+ 5.6.1 / PL/I-80 1.4 / CBASIC 2.8 /
-  BDS C 1.60
+## 構成
 
-## ダウンロード
+- **非バンク版CP/M Plus**。標準RAMで動作し、EMMは必須ではありません。
+- 80×25テキスト。ADM-3A、ANSI/VT100サブセット、TeleVideo拡張の画面制御を継承。
+- **A:/B:** 2DDフロッピー（640KB、システム予約領域を除く容量608KB）。
+- **C:/D:** SASI HDD（8MBパーティション×2）。EH-SASIによるHDD単独起動に対応。
+- **E:** MZ-1R37 EMM RAMディスク（ファイル容量620KB）。EMMの内容はリセットで保持。
+- CCPを標準RAMの物理バンク08hに保存し、ウォームブートで再読込。
+  EMMなしでもコマンドプロンプトへ復帰します。
+- CCPのローダーが常駐した通常状態で、TPAは約48.75KB。RSX等でさらに減少します。
 
-[Releases](../../releases) から:
+## ビルド
 
-| ファイル | 内容 |
+Python 3と`z80asm`が必要です。macOSでは`brew install z80asm`で導入できます。
+
+```sh
+make fetch
+make disks
+make test
+```
+
+`make fetch`はCP/M Plusのバイナリ・ソース、フォント、開発ツールをSHA256照合付きで
+取得します。取得物はGit管理外の`vendor/`に置きます。CP/M 2.2の取得・変換経路は
+廃止しました。ビルド時にも展開済みCP/Mバイナリの改変を検出します。
+
+| 生成物 | 内容 |
 |---|---|
-| `cpm_boot.d88` | 起動フロッピー（ユーティリティ入り） |
-| `cpm_data.d88` | フォーマット済みの空フロッピー（B:用） |
-| `cpm.hdd` | ハードディスクイメージ（起動可能・ユーティリティ＋開発環境入り） |
-| `cpm_tools.d88` | 開発チェーン＋CBASIC（既存のHDDへコピーする用） |
-| `cpm_langs1.d88` | Pascal/MT+（同上） |
-| `cpm_langs2.d88` | PL/I-80＋BDS C（同上） |
+| `build/cpm_boot.d88` | CP/M Plus起動FD、標準ユーティリティ、PUTSYS |
+| `build/cpm_data.d88` | 空のデータFD |
+| `build/cpm.hdd` | HDD単独起動用、C:システム・開発ツール、D:言語処理系 |
+| `build/cpm_tools.d88` | 開発ツール＋CBASIC |
+| `build/cpm_langs1.d88` | Pascal/MT+ |
+| `build/cpm_langs2.d88` | PL/I-80＋BDS C |
 
-`cpm.hdd` をそのまま使う場合、収集フロッピー3枚は不要です。すでに
-運用中のHDDにツールだけ足したいときに、フロッピーから
-`PIP C:=A:*.*[V]`（cpm_tools）/ `PIP D:=A:*.*[V]`（langs1/langs2）で
-コピーしてください。
+標準ユーティリティにはPIP、ED、SUBMIT、DIR、TYPE、ERASE、RENAME、SHOW、SET、
+SETDEF、DUMP、HEXCOM、SID、HELPなどを含みます。2.2版のSTATやXSUBの代わりに
+Plus版のコマンドを使用します。開発・言語ツールは従来の取得物で、全処理系の
+Plus上での動作確認を完了したという意味ではありません。
 
-## 使い方
+## エミュレータでの実行と検証
 
-### エミュレータで
+外部のMZ-2500エミュレータに`build/cpm_boot.d88`をFD1として指定します。
+このリポジトリにはエミュレータやROMを含めません。
 
-**いちばん簡単な方法**:
-[ブラウザ版MZ-2500エミュレータ](https://zabaglione.github.io/mz2500-web-emulator/)
-の「CP/M」ボタンを押すだけで、このハードディスクイメージが起動します
-（ROM不要。HDDへの書き込みはブラウザに保存され、次回も続きから使えます）。
+```sh
+/path/to/mz2500w-cli --disk-a build/cpm_boot.d88 \
+  --frames 1800 --type 'SHOW\r:1000' --screen-report
 
-その他のエミュレータでは、実IPL対応のものに `cpm_boot.d88` をFD1に入れて
-起動してください。IPLPRO形式なので、実機ROMを使わないエミュレータでも
-起動できる場合があります。
-
-ハードディスク（`cpm.hdd`、256バイト/ブロックのSASI生イメージ）は
-SASI対応エミュレータでHD1としてマウントします。HDDから起動するには
-EH-SASI ROM（後述）が必要です。
-
-### 実機で — フロッピー
-
-2DD 80シリンダ×2面×16セクタ×256バイトで書き込みます。Greaseweazleの例:
-
-```
-gw convert --format=luxor.640 cpm_boot.d88 cpm_boot.img
-gw write --drive=B --format=luxor.640 --pre-erase cpm_boot.img
+python3 tools/verify_runtime.py --emulator /path/to/mz2500w-cli
 ```
 
-### 実機で — ハードディスク（SASI）
+HDD単独起動も検証する場合は、所有するROMを指定します。
 
-MZ-1E30互換インタフェース＋SASI対応のSDカードエミュレータ
-（BlueSCSI/ArdSCSino系）＋ [EH-SASI ROM](https://github.com/SuperTurboZ/Enhanced-SASI-driver-for-MZ-2500)
-の環境で動作を確認しています。
-
-SDカード上のイメージファイル（例: `HD00_256.HDF` = SASI ID0/LUN0/
-256バイトブロック）を `cpm.hdd` の内容に差し替えれば、電源ONだけで
-CP/Mが `C>` で立ち上がります。
-
-起動時の操作（EH-SASI環境）:
-- そのまま待つ → ハードディスクから自動起動
-- **SPACE** → 起動メニュー（F1-F4=HD1-4、1-4=FD1-4）
-- **SHIFTを押しながら起動** → HD-BIOSを使わずフロッピー起動
-
-### システムの更新（PUTSYS）
-
-新しい起動フロッピーをA:に入れて
-
-```
-A>PUTSYS
+```sh
+python3 tools/verify_runtime.py --emulator /path/to/mz2500w-cli \
+  --rom-dir /path/to/mz2500-roms --sasi-rom /path/to/sasirom.bin
 ```
 
-を実行すると、フロッピーのシステムがハードディスクの起動領域へ複写
-されます（C:のファイルには触れません）。実行後にIPLボタンで再起動して
-ください。SDカードを抜く必要はありません。
+実行結果・保存ディスク・画面は`build/qa/`に出力します。検証プログラムは実際の
+Z80/BDOS呼び出しでバージョン31h、SCB、ファイル名解析、複数レコード入出力、
+ランダム読込、フラッシュを確認します。PIPの70,000バイトコピーは保存ディスクを
+ホスト側で読み直し、バイト比較します。SUBMIT、EMM保持、PUTSYSの書込範囲、
+外部ROMを使ったHDD起動も別シナリオで確認します。
 
-## ゲームで遊ぶ（お手元ビルド）
+**検証範囲:** 静的テストとネイティブエミュレータでの実行を対象としています。
+今回のPlus版は実機・ブラウザでは未検証です。既存Webサイトの同梱HDDもこの作業では
+更新していません。[移植仕様](docs/cpm3-port.md)に構成と判断根拠を記載しています。
 
-動作確認済みのゲーム（Ladder / CatChum / Rogue / In The Dark /
-Colossal Cave Adventure / FLAP など）を、**ご自分のマシン上で起動
-フロッピーに組み立てる**スクリプトを用意しています。ゲームは同梱
-しません。必要なのは **Python 3 だけ**です:
+## 2.2版のディスクとの関係
 
-```
-python3 tools/make_game_disk.py --list      # カタログ表示
-python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
-```
+**Plus版では新規ディスクイメージを使用してください。** FDの予約トラックは6から8、
+HDDは3から4へ変更しました。2.2版の既存ディスクをPlus版のデータドライブとして
+使用することや、PUTSYSだけで2.2版HDDをPlus化することには対応しません。
+既存SDカードへ書き込む前にカード全体をバックアップしてください。
 
-できたd88を
-[ブラウザ版エミュレータ](https://zabaglione.github.io/mz2500-web-emulator/)
-へドラッグ&ドロップするか、実機のフロッピーに書いて起動してください。
-**タイトル一覧・操作方法・注意点は [GAMES.md](GAMES.md) にまとめて
-あります。**
+Plus版で運用中のHDDを更新する場合のみ、新しいPlus起動FDをA:に入れて`PUTSYS`を
+実行できます。A:/C:のPlusブートヘッダーを確認したうえで予約領域をコピーし、
+起動ドライブをC:に設定します。C:のファイル領域とパーティション表は変更しません。
+完了後、IPLボタンでコールドブートしてください。
 
-## フロッピーを入れ替えるとき
+実機FD用の変換例（この版の書込・実機起動は未実施）:
 
-CP/M 2.2にはディスク交換の自動検出がありません（当時のCP/M共通の仕様です）。
-フロッピーを入れ替えたら **CTRL+C** を押してください。本移植のCTRL+Cは
-EMMからの高速ウォームブートなので一瞬で、FDも回りません。
-
-- 押し忘れて書き込もうとしても、交換がチェックサムで検出されて
-  `Bdos Err On B: R/O` で止まり、**ディスクは壊れません**。何かキーを
-  押すとウォームブートするので、そのまま操作をやり直せます
-- 読むだけ（DIR / TYPE）なら入れ替え後もそのまま通ります
-- PIPなど多くのコマンドは終了時に自動でウォームブートするため、
-  プロンプトに戻ってから入れ替えて次のコマンドを打つ分には、実質
-  意識しなくても安全です
-- アクセスランプ点灯中の入れ替えだけは、実機同様に避けてください
-
-## 言語を使う
-
-オーバーレイファイルを持つ処理系（Pascal/MT+、PL/I-80）は、**D: を
-カレントドライブにして**実行してください。同梱のサンプルで一連の流れを
-確認できます:
-
-```
-C>D:
-D>MTPLUS PROG            （PROG.SRC をコンパイル）
-D>LINKMT PROG,PASLIB/S   （PROG.COM を生成）
-D>PROG
+```sh
+gw convert --format=luxor.640 build/cpm_boot.d88 cpm_boot.img
 ```
 
-PL/I-80 は `PLI DEMO`、CBASIC は `CBASIC ソース名` → `CRUN ソース名`、
-BDS C は `CC ソース名.C` → `CLINK ソース名` です。
+HDDは従来同様、22,437,888バイト、256バイト/ブロックのSASIイメージです。
+EH-SASI環境へ新規イメージとして導入します。
 
-## キー入力のメモ
+## 対応範囲
 
-- 英字は小文字入力でかまいません（CP/Mが大文字化します）
-- `=` は SHIFT+`-`、`*` は SHIFT+`:`（JIS配列どおり）
-- カーソルキーは ^H ^J ^K ^L、HOME/CLRは ^^ / ^Z を入力します
-- フロッピーのモータは約8秒間操作がないと自動停止し、次のアクセスで
-  再回転します（約1秒待ってから読み書きします）
-
-## 既知の制約
-
-- カナ入力・ファンクションキーは未対応（ASCIIのみ）
-- SUBMITが作る `$$$.SUB` はCP/Mの仕様どおりA:に書かれるため、
-  フロッピーを入れていない構成ではSUBMIT/XSUBは実質使えません
-- プリンタ出力は未接続（LISTは読み捨て）
-
-## 自分でビルドする
-
-macOS/Linux、Python 3 と z80asm（Bas Wijnen版 1.8, `brew install z80asm`）
-が必要です。
-
-```
-make fetch   # CP/M本体・ユーティリティ・フォント・言語/ツール群を取得
-make         # build/ にディスクイメージ一式を生成
-make test    # 単体テスト（変換結果の原本一致検証を含む）
-```
+- 非バンク構成です。バンク版固有の機能・大きなTPAは提供しません。
+- RTC連動、プリンタ、補助入出力、DEVICEによる物理デバイス再割当は未対応です。
+- フロッピー交換後はコマンドプロンプトでCtrl-Cを入力してください。
+- カナ入力・F1–F10は未対応です。PCGを書き換えるアプリの後はIPLで復旧します。
+- 物理RAMバンク08hはCCPキャッシュとして予約しています。
+- 過去のゲーム動作確認は2.2版の記録です。[ゲームカタログ](GAMES.md)を参照してください。
 
 ## ライセンス
 
-- CP/M 2.2本体とDRIユーティリティ・言語製品（MAC/RMAC/ZSID/Pascal/MT+/
-  PL/I-80/CBASIC）: DRDOS, Inc.（Bryan Sparks氏）の2022-07-07許諾により
-  自由に使用・配布・改変できます
-- BDS C: 作者によりパブリックドメイン化（2002年）
-- 本移植のBIOS・ツール類: MIT License
-- フォント: パブリックドメイン（font8x8）
-
-詳細と出自は [LICENSES.md](LICENSES.md) を参照してください。
-
-## 謝辞
-
-- [The Unofficial CP/M Web Site](http://www.cpm.z80.de/) — CP/M本体の配布とライセンスの窓口
-- [brouhaha/cpm22](https://github.com/brouhaha/cpm22) — クロスアセンブル可能なCP/M 2.2ソース
-- [Enhanced SASI driver for MZ-2500 (EH-SASI)](https://github.com/SuperTurboZ/Enhanced-SASI-driver-for-MZ-2500) — ハードディスク起動を支えるSASI BIOS ROM
-- [BD Software](https://www.bdsoft.com/resources/bdsc.html) — BDS Cのパブリックドメイン公開
-- [dhepper/font8x8](https://github.com/dhepper/font8x8) — コンソールフォント
+移植コードはMIT、CP/M PlusおよびDRI製品はDRDOS, Inc.の2022-07-07許諾によります。
+[LICENSES.md](LICENSES.md)に取得元・許諾・変更内容をまとめています。
