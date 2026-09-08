@@ -89,7 +89,7 @@ def build_binaries() -> tuple[bytes, ...]:
     (BUILD / "bnkbdos.bin").write_bytes(bnkbdos)
     (BUILD / "bdos.bin").write_bytes(bdos)
     (BUILD / "cpm_layout.json").write_text(json.dumps({
-        "version": "3.1.0", "bdos_version": "3.1", "banked": True,
+        "version": "3.1.2", "bdos_version": "3.1", "banked": True,
         "bdos_base": BDOS_BASE, "bios_base": BIOS_BASE,
         "boot_drive_default": bios_labels['boot_drive_default'],
         "banks": list(IPL_DEST_BANKS), "labels": bios_labels, "common_labels": common_labels,

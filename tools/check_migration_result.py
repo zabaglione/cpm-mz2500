@@ -56,6 +56,6 @@ def main():
     assert old[end:]==new[end:],'bytes outside C/D changed'
     canonical=(ROOT/'build/cpm.hdd').read_bytes()
     assert new[8192:8192+40960]==canonical[8192:8192+40960],'new boot area differs'
-    report={'user_files_preserved':checked,'new_system_files_verified':len(utilities),'volumes':meta['volumes'],'archive_crc':f'{zlib.crc32(archive):08x}','source_backup_verify':'byte-identical (runtime assertion)','boot':'CP/M Plus v3.1.0 HDD boot passed','physical_hardware':'not tested'}
+    report={'user_files_preserved':checked,'new_system_files_verified':len(utilities),'volumes':meta['volumes'],'archive_crc':f'{zlib.crc32(archive):08x}','source_backup_verify':'byte-identical (runtime assertion)','boot':'CP/M Plus v3.1.2 HDD boot passed','physical_hardware':'not tested'}
     (QA/'results.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 if __name__=='__main__':main()

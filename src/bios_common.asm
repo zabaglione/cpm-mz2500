@@ -142,22 +142,100 @@ move:
 move_begin:
         xor a
         ld (move_pending),a
-move_loop:
         ld a,b
         or c
-        jr z,move_done
+        jp z,move_done
+        ld a,(move_source)
+        push hl
+        ld hl,move_dest
+        cp (hl)
+        pop hl
+        jr nz,move_cross
+        ; Same-bank MOVE retains forward LDIR overlap semantics.
+        call selmem
+        ex de,hl
+        ldir
+        ex de,hl
+        jp move_done
+move_cross:
+        ld (move_remaining),bc
+        ld (move_target),hl
+        ld (move_origin),de
+move_chunk_loop:
+        ; Split at 128-byte boundaries of both pointers, including E000h
+        ; private/common transitions and address wrap at 0000h.
+        ld a,l
+        and 07fh
+        neg
+        add a,128
+        ld c,a
+        ld a,e
+        and 07fh
+        neg
+        add a,128
+        cp c
+        jr c,move_have_limit
+        ld a,c
+move_have_limit:
+        ld bc,(move_remaining)
+        inc b
+        dec b
+        jr nz,move_limit_ready
+        cp c
+        jr c,move_limit_ready
+        ld a,c
+move_limit_ready:
+        ld c,a
+        ld b,0
+        ld (move_chunk),bc
+        ld a,h
+        cp 0e0h
+        jr nc,move_target_common
+        ld a,d
+        cp 0e0h
+        jr nc,move_origin_common
+        ; Different private banks: stage a chunk in common memory.
         ld a,(move_source)
         call selmem
-        ld a,(de)
-        ld (move_byte),a
+        ld hl,(move_origin)
+        ld de,move_buffer
+        ldir
+        ld (move_origin),hl
         ld a,(move_dest)
         call selmem
-        ld a,(move_byte)
-        ld (hl),a
-        inc hl
-        inc de
-        dec bc
-        jr move_loop
+        ld hl,move_buffer
+        ld de,(move_target)
+        ld bc,(move_chunk)
+        ldir
+        ex de,hl
+        ld de,(move_origin)
+        jr move_chunk_done
+move_target_common:
+        ld a,(move_source)
+        jr move_direct_chunk
+move_origin_common:
+        ld a,(move_dest)
+move_direct_chunk:
+        ; A common endpoint needs only one map. LDIR also preserves
+        ; byte-forward semantics when both common ranges overlap.
+        call selmem
+        ex de,hl
+        ldir
+        ex de,hl
+move_chunk_done:
+        ld (move_target),hl
+        ld (move_origin),de
+        ld hl,(move_remaining)
+        ld bc,(move_chunk)
+        or a
+        sbc hl,bc
+        ld (move_remaining),hl
+        ld a,h
+        or l
+        ld hl,(move_target)
+        ld de,(move_origin)
+        jp nz,move_chunk_loop
+        ld bc,0
 move_done:
         ld a,(move_return)
         call selmem
@@ -345,7 +423,11 @@ move_source: defb 0
 move_dest: defb 0
 move_return: defb 0
 move_pending: defb 0
-move_byte: defb 0
+move_remaining: defw 0
+move_chunk: defw 0
+move_target: defw 0
+move_origin: defw 0
+move_buffer: defs 128,0
 move_sp: defw 0
         defs 32,0
 move_stack_top:

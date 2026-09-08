@@ -124,7 +124,7 @@ coldinit_banner_loop:
 
 coldinit_banner:
         defb    "MZ-2500 CP/M Plus (banked)",0dh,0ah
-        defb    "EMM/SASI port v3.1.0",0dh,0ah,0ah,0
+        defb    "EMM/SASI port v3.1.2",0dh,0ah,0ah,0
 
  if $>=08500h
         defs    BAD_coldinit_overflows_into_ccp
