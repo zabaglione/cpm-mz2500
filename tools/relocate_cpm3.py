@@ -1,39 +1,34 @@
-"""Relocate the pinned DRI nonbanked BDOS SPR for a native IPL image.
+"""Relocate the pinned DRI banked CP/M Plus SPR modules."""
+from __future__ import annotations
 
-SPR: 256-byte header, little-endian module length at +1, code, then a
-MSB-first relocation bitmap. FF-page references name the BIOS; all other
-marked bytes are module-relative high bytes. The SCB is embedded three
-pages below BIOS (DRI GENCPM layout, without the optional page chop).
-See docs/cpm3-port.md for the primary-source references.
-"""
-
-def relocate_bdos(spr: bytes, base: int, bios: int) -> bytes:
-    if base & 255 or bios & 255 or not 0 < base < bios < 65536:
-        raise ValueError("BDOS and BIOS require ordered page-aligned addresses")
-    if len(spr) < 256:
-        raise ValueError("truncated SPR header")
-    length = int.from_bytes(spr[1:3], "little")
-    if length != 0x20E7 or base + ((length + 255) & ~255) != bios:
-        raise ValueError("unexpected nonbanked BDOS layout")
-    if len(spr) < 256 + length + (length + 7) // 8:
-        raise ValueError("truncated SPR code/bitmap")
-    code = bytearray(spr[256:256+length])
-    bitmap = spr[256+length:]
-    for offset in range(length):
-        if bitmap[offset//8] & (0x80 >> (offset % 8)):
-            page = code[offset]
-            if page == 0xFF:
-                code[offset] = bios >> 8
-            elif page <= 0x20:
-                code[offset] = page + (base >> 8)
+def relocate(spr: bytes, base: int, length: int, externals: dict[int,int]) -> bytes:
+    if base & 255 or base + length > 65536 or len(spr) < 256:
+        raise ValueError("invalid SPR placement/header")
+    size = int.from_bytes(spr[1:3],"little")
+    if size != length or len(spr) < 256+size+(size+7)//8:
+        raise ValueError("unexpected or truncated SPR")
+    data = bytearray(spr[256:256+size])
+    bitmap = spr[256+size:]
+    for i in range(size):
+        if bitmap[i//8] & (128 >> (i%8)):
+            page = data[i]
+            if page in externals:
+                data[i] = externals[page] >> 8
+            elif page < (size+255)//256:
+                data[i] = page+(base>>8)
             else:
-                raise ValueError(f"unsupported SPR relocation page {page:02X}")
-    scb = bios - 0x264 - base
-    if code[scb+5] != 0x31:
-        raise ValueError("BDOS does not report CP/M Plus 3.1")
-    code[scb+0x13] = 0  # default boot drive (HDD builder patches to C)
-    code[scb+0x1A] = 79  # last screen column
-    code[scb+0x1C] = 24  # last screen row
-    code[scb+0x2E] = 1   # destructive backspace
-    code[scb+0x2F] = 0   # rubout mode
-    return bytes(code).ljust(bios-base, b"\0")
+                raise ValueError(f"unknown SPR external page {page:02X}")
+    return bytes(data)
+
+def relocate_banked(res: bytes, banked: bytes) -> tuple[bytes,bytes]:
+    res_base,bnk_base,bios = 0xE200,0xB200,0xE800
+    scb_page = 0xE700
+    r = bytearray(relocate(res,res_base,0x600,{0xFC:bnk_base,0xFF:bios}))
+    b = relocate(banked,bnk_base,0x2E00,{0xFB:scb_page,0xFD:res_base,0xFF:bios})
+    scb = 0x59C
+    if r[scb+5] != 0x31:
+        raise ValueError("unexpected BDOS version")
+    for offset,value in ((0x13,0),(0x1A,79),(0x1C,24),(0x2E,1),(0x2F,0)):
+        r[scb+offset]=value
+    r[scb+0x5D:scb+0x5F] = bytes.fromhex('00 e0')
+    return bytes(r),b

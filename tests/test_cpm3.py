@@ -9,7 +9,7 @@ import fetch_cpm3
 import disk_geometry as dg
 import make_boot_d88 as boot
 import make_hdd_image as hdd
-from relocate_cpm3 import relocate_bdos
+from relocate_cpm3 import relocate, relocate_banked
 from d88 import D88Image
 from cpmfs import CpmFilesystem, D88CpmAdapter, FlatCpmAdapter
 
@@ -18,31 +18,42 @@ class Cpm3Test(unittest.TestCase):
     def test_pinned_vendor_inputs(self):
         fetch_cpm3.verify_binaries()
 
-    def test_relocation_preserves_instructions_and_resolves_bios(self):
-        spr = (fetch_cpm3.VENDOR / 'bin/bdos3.spr').read_bytes()
-        result = relocate_bdos(spr, 0xC700, 0xE800)
-        length = int.from_bytes(spr[1:3], 'little')
-        scb_changes = {0x1E9C+x for x in (0x13, 0x1A, 0x1C, 0x2E, 0x2F)}
-        bios_calls = 0
-        for i, old in enumerate(spr[256:256+length]):
-            if i in scb_changes:
-                continue
-            relocated = bool(spr[256+length+i//8] & (128 >> (i%8)))
-            expected = (0xE8 if old == 255 else old+0xC7) if relocated else old
-            self.assertEqual(result[i], expected, hex(i))
-            bios_calls += relocated and old == 255
-        self.assertEqual(bios_calls, 47)
-        self.assertEqual(result[0x1EFE:0x1F00], bytes.fromhex('06 c7'))
-        self.assertEqual(len(result), 0x2100)
+    def test_relocation_preserves_instructions_and_resolves_externals(self):
+        for name,base,size,externals in (
+            ('resbdos3.spr',0xE200,0x600,{0xFC:0xB200,0xFF:0xE800}),
+            ('bnkbdos3.spr',0xB200,0x2E00,{0xFB:0xE700,0xFD:0xE200,0xFF:0xE800})):
+            spr = (fetch_cpm3.VENDOR/'bin'/name).read_bytes()
+            result = relocate(spr,base,size,externals)
+            for i,old in enumerate(spr[256:256+size]):
+                marked = spr[256+size+i//8] & (128 >> (i%8))
+                expected = externals.get(old,base+old*256)//256 if marked else old
+                self.assertEqual(result[i],expected,hex(i))
+        res,bnk = relocate_banked(
+            (fetch_cpm3.VENDOR/'bin/resbdos3.spr').read_bytes(),
+            (fetch_cpm3.VENDOR/'bin/bnkbdos3.spr').read_bytes())
+        self.assertEqual(res[0x5F9:0x5FB],bytes.fromhex('00 e0'))
+        self.assertEqual(res[0x5FE:0x600],bytes.fromhex('06 e2'))
+        self.assertEqual((len(res),len(bnk)),(0x600,0x2E00))
 
     def test_invalid_spr_rejected(self):
-        spr = (fetch_cpm3.VENDOR / 'bin/bdos3.spr').read_bytes()
-        for bad in (b'', spr[:255], spr[:9000], bytes(256)):
+        spr = (fetch_cpm3.VENDOR/'bin/resbdos3.spr').read_bytes()
+        for bad in (b'',spr[:255],spr[:1700],bytes(256)):
             with self.assertRaises(ValueError):
-                relocate_bdos(bad, 0xC700, 0xE800)
-        for addresses in ((0xC701, 0xE800), (0xC600, 0xE800), (0xE800, 0xC700)):
-            with self.assertRaises(ValueError):
-                relocate_bdos(spr, *addresses)
+                relocate(bad,0xE200,0x600,{0xFC:0xB200,0xFF:0xE800})
+        with self.assertRaises(ValueError):
+            relocate(spr,0xE201,0x600,{})
+        with self.assertRaises(ValueError):
+            relocate(spr,0xE200,0x600,{})
+
+    def test_rtc_calendar_table_matches_gregorian_dates(self):
+        import datetime
+        import re
+        source = (ROOT/'src/generated_rtc.inc').read_text()
+        values = [int(x) for x in re.findall(r'defw (\d+)\s*$',source,re.M)]
+        epoch = datetime.date(1978,1,1)
+        self.assertEqual(values,[(datetime.date(y,1,1)-epoch).days+1
+                                 for y in range(1978,2078)])
+        self.assertEqual((datetime.date(2077,12,31)-epoch).days+1,36525)
 
     def test_floppy_banks_do_not_overlap_filesystem(self):
         disk = D88Image(bytearray((ROOT/'build/cpm_boot.d88').read_bytes()))

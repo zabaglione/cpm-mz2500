@@ -6,7 +6,7 @@
   CP/Mと派生物の再配布・改変許諾。原文は取得後の`vendor/cpm3/LICENSE.txt`。
 - 配布元: [Digital Research CP/M releases](https://www.seasip.info/Cpm/software/dri.html)。
   `cpm3bin_unix.zip`と`cpm3src_unix.zip`を`tools/fetch_cpm3.py`がSHA256照合付きで取得。
-- 使用: 非バンク版`bdos3.spr`、`ccp.com`、標準ユーティリティ。
+- 使用: バンク版`resbdos3.spr`・`bnkbdos3.spr`、`ccp.com`、標準ユーティリティ。
 - 本移植で行う処理: SPRのアドレス再配置とSCB設定。DRIの命令列やシリアルを
   任意変更するパッチは使用しない。ソース・バイナリは`vendor/`に取得し、Gitには含めない。
 

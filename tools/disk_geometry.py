@@ -7,13 +7,13 @@ Run this file to (re)generate src/generated_dpb.inc.
 
 Layouts (see the plan for the full derivation):
 - FD 2DD: 80 cyl x 2 heads x 16 x 256B. One CP/M track = one physical
-  (cyl, side); track number = cyl*2 + side. Cylinders 0-3 are the system
-  area (IPL banks + boot header + CCP/BDOS/BIOS image) -> OFF=8.
-- EMM MZ-1R37 640KB: 8KB tracks; tracks 0-1 (16KB) hold the warm-boot
-  image -> OFF=2. CKS=0 (non-removable).
+  (cyl, side); track number = cyl*2 + side. Cylinders 0-4 are the system
+  area (IPL banks + boot header + CCP/BDOS/BIOS image) -> OFF=10.
+- EMM MZ-1R37 640KB: 8KB tracks; tracks 0-1 (16KB) remain reserved
+  -> OFF=2. CCP is cached in main RAM. CKS=0 (non-removable).
 - SASI: one CP/M drive = one 8MB partition (32768 x 256B blocks). 8KB
-  tracks; tracks 0-3 (32KB) hold the boot area (IPLPRO record at
-  partition block 0, bank images from block 16) -> OFF=4.
+  tracks; tracks 0-4 (40KB) hold the boot area (IPLPRO record at
+  partition block 0, bank images from block 16) -> OFF=5.
 """
 
 from __future__ import annotations
@@ -82,8 +82,8 @@ class Geometry:
 # --- FD 2DD (drives A:, B:) -------------------------------------------------
 FD = Geometry(
     name="fd",
-    comment="FD 2DD 80x2x16x256, cylinders 0-3 reserved for the system",
-    spt=32, bsh=4, dsm=303, drm=127, al0=0xC0, al1=0x00, cks=32, off=8,
+    comment="FD 2DD 80x2x16x256, cylinders 0-4 reserved for the system",
+    spt=32, bsh=4, dsm=299, drm=127, al0=0xC0, al1=0x00, cks=32, off=10,
     total_tracks=160,
 )
 
@@ -98,8 +98,8 @@ EMM = Geometry(
 # --- SASI 8MB partition (drives C:, D:) -------------------------------------
 SASI = Geometry(
     name="sasi",
-    comment="SASI 8MB partition (32768 x 256B), tracks 0-3 = boot area",
-    spt=64, bsh=5, dsm=2039, drm=1023, al0=0xFF, al1=0x00, cks=0, off=4,
+    comment="SASI 8MB partition (32768 x 256B), tracks 0-4 = boot area",
+    spt=64, bsh=5, dsm=2037, drm=1023, al0=0xFF, al1=0x00, cks=0, off=5,
     total_tracks=1024,
 )
 

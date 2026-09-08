@@ -15,10 +15,10 @@ class DpbTest(unittest.TestCase):
             g.check()
 
     def test_fd_capacity(self):
-        # 152 data tracks x 4KB = 608KB -> 304 x 2KB blocks
-        self.assertEqual(dg.FD.data_records, 4864)
+        # 150 data tracks x 4KB = 600KB -> 300 x 2KB blocks
+        self.assertEqual(dg.FD.data_records, 4800)
         self.assertEqual(dg.FD.bls, 2048)
-        self.assertEqual(dg.FD.dsm, 303)
+        self.assertEqual(dg.FD.dsm, 299)
         self.assertEqual(dg.FD.exm, 0)
 
     def test_emm_capacity(self):
@@ -28,10 +28,10 @@ class DpbTest(unittest.TestCase):
         self.assertEqual(dg.EMM.cks, 0)
 
     def test_sasi_capacity(self):
-        # 1020 data tracks x 8KB -> 2040 x 4KB blocks, 1024 dir entries
-        self.assertEqual(dg.SASI.data_records, 65280)
+        # 1019 data tracks x 8KB -> 2038 x 4KB blocks, 1024 dir entries
+        self.assertEqual(dg.SASI.data_records, 65216)
         self.assertEqual(dg.SASI.bls, 4096)
-        self.assertEqual(dg.SASI.dsm, 2039)
+        self.assertEqual(dg.SASI.dsm, 2037)
         self.assertEqual(dg.SASI.exm, 1)
         self.assertEqual(dg.SASI.drm, 1023)
 

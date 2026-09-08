@@ -1,0 +1,19 @@
+; CP/M day numbers independently computed from Gregorian dates.
+        defw 1
+        defb 023h,059h,030h
+        defw 730
+        defb 023h,059h,030h
+        defw 790
+        defb 023h,059h,030h
+        defw 8035
+        defb 023h,059h,030h
+        defw 8095
+        defb 023h,059h,030h
+        defw 16495
+        defb 023h,059h,030h
+        defw 16861
+        defb 023h,059h,030h
+        defw 17783
+        defb 023h,059h,030h
+        defw 36525
+        defb 023h,059h,030h

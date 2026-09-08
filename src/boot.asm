@@ -1,13 +1,13 @@
 ; Native MZ-2500 CP/M Plus IPLPRO bootstrap.
-; IPL loads physical banks 05h/06h/07h and enters A000h. Block 7 is
+; IPL loads physical banks 0Ch/0Dh/0Eh/07h and enters 8000h. Block 7 is
 ; still mapped to firmware bank 0Fh until boot_stub switches it to 07h.
-; A100h: font. A400h: one-shot cold initialization. These become TPA.
-; make_boot_d88.py places CCP at B000h and the resident BDOS at C700h.
+; 8100h: font. 8400h: one-shot cold initialization in system bank 0.
+; make_boot_d88.py places CCP at A500h, banked BDOS at B200h, resident BDOS at E200h.
 
 BIOS_BOOT:      equ 0e800h
-BIOS_CONOUT:    equ 0e80ch      ; jump-table entry #4 (boot,wboot,const,conin,conout)
+BIOS_CONOUT:    equ 0850ch      ; jump-table entry #4 (boot,wboot,const,conin,conout)
 
-        org     0a000h
+        org     08000h
 
 boot_stub:
         di
@@ -21,7 +21,7 @@ boot_stub:
         ld      a,018h
         out     (0a1h),a
         out     (0a3h),a
-        ld      sp,0a000h       ; empty TPA below us: safe scratch stack
+        ld      sp,08000h       ; empty TPA below us: safe scratch stack
         ; map CPU block 7 (E000h-FFFFh) from the firmware's 0Fh onto our
         ; bank 07h, where the BDOS tail and the BIOS were just loaded
         ld      a,7
@@ -30,17 +30,17 @@ boot_stub:
         out     (0b5h),a
         jp      BIOS_BOOT
 
-        defs    0a100h-$,0
+        defs    08100h-$,0
 
 ; --- console font (referenced by the cold-init overlay) ----------------
         include "generated_font.inc"
 
-        defs    0a400h-$,0
+        defs    08400h-$,0
 
 ; --- one-shot cold-init overlay ---------------------------------------
 ; Runs once from BIOS boot (on the BIOS stack, which lives in bank 07h,
 ; so CPU block 2 can be swapped without the stack tricks the resident
-; BIOS needs). Afterwards A400h-AFFFh is plain TPA.
+; BIOS needs). This overlay stays in the system bank.
 coldinit:
         ; 8255: explicit mode word (A/C out, B in), then the proven idle
         ; port C value 58h (BST=1 idle, NST=0 - bit1's rising edge would
@@ -62,7 +62,7 @@ coldinit:
         out     (0f4h),a
         xor     a
         out     (0f5h),a
-        ld      a,002h
+        ld      a,00ah
         out     (0f4h),a
         xor     a
         out     (0f5h),a
@@ -104,7 +104,7 @@ coldinit_pcg_clear:
         ldir
         ld      a,2
         out     (0b4h),a
-        ld      a,002h
+        ld      a,00ah
         out     (0b5h),a
 
         ; clear the screen and greet through the resident CONOUT
@@ -123,9 +123,9 @@ coldinit_banner_loop:
         jr      coldinit_banner_loop
 
 coldinit_banner:
-        defb    "MZ-2500 CP/M Plus (nonbanked)",0dh,0ah
-        defb    "EMM/SASI port v3.0.0",0dh,0ah,0ah,0
+        defb    "MZ-2500 CP/M Plus (banked)",0dh,0ah
+        defb    "EMM/SASI port v3.1.0",0dh,0ah,0ah,0
 
- if $>=0b000h
+ if $>=08500h
         defs    BAD_coldinit_overflows_into_ccp
  endif

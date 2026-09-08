@@ -22,9 +22,9 @@ JT_WRITE:       equ 42
 
         include "generated_putsys.inc"
 
-; where the boot-drive byte lands on the hard disk (bank07 = records 80+)
-BDD_OFF:        equ BOOT_DRIVE_BYTE_ADDR - 0e000h
-BDD_REC:        equ 80 + BDD_OFF / 256
+; Boot-drive byte within the contiguous HDD bank payload (starts at record 16).
+BDD_OFF:        equ BOOT_DRIVE_BYTE_ADDR - 08000h
+BDD_REC:        equ 16 + BDD_OFF / 256
 BDD_TRK:        equ BDD_REC / 32
 BDD_SEC:        equ (BDD_REC & 01fh) * 2 + (BDD_OFF & 0ffh) / 128
 BDD_BUFO:       equ BDD_OFF & 07fh
@@ -227,7 +227,7 @@ header_compare_loop:
         inc      de
         djnz    header_compare_loop
         ld      a,(buffer+020h)
-        cp      5
+        cp      12
         ret
 header_signature: defb "IPLPROCP/M-PLUS"
 msg_wrong_media: defb "CP/M Plus boot media required on A: and C:",13,10,"$"
@@ -272,6 +272,8 @@ ranges:
         defb    80,64,16
         defb    64,80,16
         defb    112,96,16
+        defb    96,112,16
+        defb    144,128,16
         defb    16,0,1
         defb    0,0,0
 

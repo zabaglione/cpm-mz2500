@@ -1,6 +1,6 @@
-; MZ-2500 CP/M Plus BIOS (nonbanked), org 0E800h.
+; MZ-2500 CP/M Plus bank-0 hardware BIOS, org 8500h.
 ;
-; Layout: CCP=0100h, BDOS=C700h (entry C706h), BIOS=E800h.
+; Common BIOS is E800h; banked BDOS is B200h; resident BDOS is E200h.
 ; Runs with interrupts permanently disabled (DI + polling: the FDC INTRQ is
 ; not wired to the CPU and half the commercial titles ship DI+polling).
 ; IM 1 is set and 0038h holds JP WBOOT purely as a recovery net.
@@ -21,9 +21,9 @@
 ; mode lives on the same latch as the strobe).
 
 CCP:            equ 00100h
-BDOS_ENTRY:     equ 0c706h
-BIOS_BASE:      equ 0e800h
-COLDINIT:       equ 0a400h      ; one-shot overlay (reclaimed as TPA)
+BDOS_ENTRY:     equ 0e206h
+BIOS_BASE:      equ 08500h
+COLDINIT:       equ 08400h      ; one-shot overlay in system bank 0
 
 NUM_DRIVES:     equ 5           ; A:,B: FD  C:,D: SASI  E: EMM
 
@@ -50,7 +50,7 @@ VWIN:           equ 04000h
 VWIN_BLOCK:     equ 2
 BANK_TVRAM:     equ 038h
 BANK_PCG:       equ 039h
-BANK_RAM2:      equ 002h
+BANK_RAM2:      equ 00ah
 
 TV_COLS:        equ 80
 TV_ROWS:        equ 25
@@ -92,8 +92,8 @@ wboote: jp      wboot           ; warm boot
         jp      noop            ; MULTIO: one record per READ/WRITE
         jp      flush
         jp      move
-        jp      noop            ; TIME: no RTC support
-        jp      noop            ; SELMEM: nonbanked system
+        jp      noop            ; TIME is dispatched by the common BIOS
+        jp      noop            ; SELMEM is dispatched by the common BIOS
         jp      noop            ; SETBNK
         jp      noop            ; XMOVE
         jp      0
@@ -105,7 +105,6 @@ wboote: jp      wboot           ; warm boot
 ; ======================================================================
 boot:
         di
-        ld      sp,bios_stack_top
         call    init_common_state
         xor     a               ; cold boot: fresh screen state, motor off
         ld      (cur_row),a
@@ -120,9 +119,10 @@ boot:
         ld      hl,0
         ld      (scroll_base),hl
         call    COLDINIT        ; one-shot HW init + banner (overlay)
+        ld      c,0
+        call    rtc_time
         call    emm_probe
         call    emm_disk_init
-        call    cache_ccp       ; reserve main RAM bank 08h for the CCP
         ld      a,(emm_present)
         or      a
         jr      z,boot_no_emm
@@ -140,20 +140,6 @@ boot_no_sasi:
 
 wboot:
         di
-        ld      sp,bios_stack_top
-        ; Re-pin CPU blocks 0-7 to main RAM banks 00h-07h. Block 7 (this
-        ; code) is what we run from, so remapping it to its own bank is a
-        ; no-op; the others may have been remapped by the exiting program.
-        ; B5h auto-increments the selector, so eight stores cover 0-7.
-        xor     a
-        out     (PORT_BANK_SEL),a
-        ld      hl,wboot_bankmap
-        ld      b,8
-wboot_bank_loop:
-        ld      a,(hl)
-        out     (PORT_BANK_VAL),a
-        inc     hl
-        djnz    wboot_bank_loop
         call    flush_host      ; pending deblocked write, best effort
         call    init_common_state
         ; Re-assert the display registers the exiting program may have
@@ -174,68 +160,8 @@ wboot_bank_loop:
         call    set_crtc_base
         ; BDOS remains resident; only CCP is reloaded below.
 boot_common:
-        ; zero page: JP WBOOT / IOBYTE / current disk / JP BDOS / IM1 net
-        ld      a,0c3h
-        ld      (00000h),a
-        ld      hl,wboote
-        ld      (00001h),hl
-        ld      (00039h),hl
-        ld      a,0c3h
-        ld      (00038h),a
-        ld      a,0c3h
-        ld      (00005h),a
-        ld      hl,(SCB+062h) ; preserve CP/M Plus loader/RSX chain
-        ld      (00006h),hl
-        xor     a
-        ld      (00003h),a      ; IOBYTE
-        im      1
-        ld      bc,00080h
-        call    setdma
-        ld      a,(00004h)      ; current disk/user survives warm boot
-        and     00fh
-        cp      NUM_DRIVES
-        jr      c,boot_disk_ok
-        xor     a
-        ld      (00004h),a
-boot_disk_ok:
-        call    reload_ccp
-        ld      a,(00004h)
-        ld      c,a
-        jp      CCP
-
-wboot_bankmap:
-        defb    000h,001h,002h,003h,004h,005h,006h,007h
-
-SCB:            equ BIOS_BASE-0300h+09ch
-CCP_IMAGE:      equ 0b000h
-CCP_SIZE:       equ 0c80h
-
-; BOOT/WBOOT run on the resident stack. The CCP cache uses main RAM
-; bank 08h (standard MZ-2500 RAM), independent of the optional EMM.
-cache_ccp:
-        ld      a,2
-        out     (PORT_BANK_SEL),a
-        ld      a,8
-        out     (PORT_BANK_VAL),a
-        ld      hl,CCP_IMAGE
-        ld      de,04000h
-        ld      bc,CCP_SIZE
-        ldir
-        jr      ccp_window_close
-reload_ccp:
-        ld      a,2
-        out     (PORT_BANK_SEL),a
-        ld      a,8
-        out     (PORT_BANK_VAL),a
-        ld      hl,04000h
-        ld      de,CCP
-        ld      bc,CCP_SIZE
-        ldir
-ccp_window_close:
-        ld      a,2
-        out     (PORT_BANK_SEL),a
-        out     (PORT_BANK_VAL),a
-        ret
+        ret                     ; common BIOS loads CCP and switches to TPA
+SCB:            equ 0e79ch
 
 ready:
         ld      a,0ffh
@@ -2412,31 +2338,33 @@ drive_table:
 dph_a:
         defw    0
         defs    10,0
-        defw    dpb_fd,csv_a,alv_a,dir_bcb,data_bcb,0ffffh
+        defw    dpb_fd,csv_a,alv_a,dir_head,data_head,0ffffh
         defb    0
 dph_b:
         defw    0
         defs    10,0
-        defw    dpb_fd,csv_b,alv_b,dir_bcb,data_bcb,0ffffh
+        defw    dpb_fd,csv_b,alv_b,dir_head,data_head,0ffffh
         defb    0
 dph_c:
         defw    0
         defs    10,0
-        defw    dpb_sasi,csv_c,alv_c,dir_bcb,data_bcb,0ffffh
+        defw    dpb_sasi,csv_c,alv_c,dir_head,data_head,0ffffh
         defb    0
 dph_d:
         defw    0
         defs    10,0
-        defw    dpb_sasi,csv_d,alv_d,dir_bcb,data_bcb,0ffffh
+        defw    dpb_sasi,csv_d,alv_d,dir_head,data_head,0ffffh
         defb    0
 dph_e:
         defw    0
         defs    10,0
-        defw    dpb_emm,csv_e,alv_e,dir_bcb,data_bcb,0ffffh
+        defw    dpb_emm,csv_e,alv_e,dir_head,data_head,0ffffh
         defb    0
 
-; Nonbanked BDOS uses one BCB per class, shared across all drives.
+; Banked BDOS takes the address of each BCB list head.
 ; BIOS presents 128-byte records and handles physical 256-byte sectors.
+dir_head:       defw dir_bcb
+data_head:      defw data_bcb
 dir_bcb:
         defb    0ffh
         defs    9,0
@@ -2509,8 +2437,8 @@ fd_tries:       defs 1
 fd_world:       defs 1
 databuf:        defs 128
 dirbuf:         defs 128
-csv_a:          defs DPB_FD_CSV_BYTES
-csv_b:          defs DPB_FD_CSV_BYTES
+csv_a:          defs DPB_FD_CSV_BYTES*2
+csv_b:          defs DPB_FD_CSV_BYTES*2
 csv_e:          defs DPB_EMM_CSV_BYTES
 csv_c:          defs DPB_SASI_CSV_BYTES
 csv_d:          defs DPB_SASI_CSV_BYTES
@@ -2531,4 +2459,5 @@ vwin_stack_top:
 bios_stack:     defs 64
 bios_stack_top:
 
+        include "rtc.asm"
 BIOS_END:       equ $

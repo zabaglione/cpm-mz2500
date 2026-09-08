@@ -27,11 +27,16 @@ def main():
     QA.mkdir(parents=True,exist_ok=True)
     subprocess.run(['z80asm','-o',str(QA/'p3test.com'),str(ROOT/'tests/cpm3_probe.asm')],check=True)
     probe = (QA/'p3test.com').read_bytes()
+    extra_probes = []
+    for name,source in [('BANKTEST','bank_probe.asm'),('RTCTEST','rtc_probe.asm')]:
+        path = QA/(name.lower()+'.com')
+        subprocess.run(['z80asm','-o',str(path),source],cwd=ROOT/'tests',check=True)
+        extra_probes.append((name+'.COM',path.read_bytes()))
     large = bytes((i*37+i//251)&255 for i in range(70000))
     floppy = D88Image(bytearray((ROOT/'build/cpm_boot.d88').read_bytes()))
     fs = CpmFilesystem(D88CpmAdapter(floppy,dg.FD))
     for name,data in [('P3TEST.COM',probe),('LARGE.BIN',large),
-                      ('BATCH.SUB',b'P3TEST\r\nDIR P3CHECK.DAT\r\n')]:
+                      ('BATCH.SUB',b'P3TEST\r\nDIR P3CHECK.DAT\r\n'),*extra_probes]:
         fs.add_file(name,data)
     (QA/'probe.d88').write_bytes(floppy.data)
     results = []
@@ -42,13 +47,17 @@ def main():
         p = subprocess.run(command,capture_output=True,text=True,timeout=90)
         output = p.stdout+p.stderr
         (QA/f'{name}.log').write_text(output)
-        if p.returncode or any(x not in output for x in expected) or 'P3TEST FAIL' in output:
+        if p.returncode or any(x not in output for x in expected) or any(x in output for x in ('P3TEST FAIL','BANKTEST FAIL','RTCTEST FAIL')):
             raise AssertionError(f'{name}: runtime check failed; see build/qa/{name}.log')
         results.append(name)
         print(f'PASS {name}',flush=True)
         return output
 
     fd = ['--disk-a',QA/'probe.d88']
+    run('banked-rtc',fd+['--type','BANKTEST\\r:600','--type','RTCTEST\\r:1600',
+                        '--type','DATE\\r:2600'],
+        ['BANKTEST PASS: SELMEM XMOVE MOVE UPPER-TPA',
+         'RTCTEST PASS: BCD CALENDAR LEAP CENTURY READ-WRITE','A>DATE'],3200)
     run('fd-api',fd+['--type','P3TEST\\r:600','--disk-save',f'0:{QA}/api-result.d88'],[PASS,'A>'],1800)
     result = D88Image(bytearray((QA/'api-result.d88').read_bytes()))
     actual = CpmFilesystem(D88CpmAdapter(result,dg.FD)).read_file('P3CHECK.DAT')
@@ -69,7 +78,7 @@ def main():
     image = bytearray((ROOT/'build/cpm.hdd').read_bytes())
     fs = CpmFilesystem(FlatCpmAdapter(image,dg.SASI,dg.SASI_BASE_C*256))
     for name,data in [('P3TEST.COM',probe),('LARGE.BIN',large),
-                      ('BATCH.SUB',b'P3TEST\r\nDIR P3CHECK.DAT\r\n')]:
+                      ('BATCH.SUB',b'P3TEST\r\nDIR P3CHECK.DAT\r\n'),*extra_probes]:
         fs.add_file(name,data)
     (QA/'probe.hdd').write_bytes(image)
     mounted = ['--hdf',QA/'probe.hdd','--hdf-block','256']
