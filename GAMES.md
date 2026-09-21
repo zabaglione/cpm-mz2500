@@ -1,7 +1,7 @@
 # ゲームカタログ — MZ-2500版CP/Mで遊ぶ
 
-MZ-2500版CP/M 2.2で**実際に動作確認したゲーム**の一覧と、遊ぶまでの
-手順です。ゲームは本体イメージやリリースには一切同梱していません。
+MZ-2500版CP/M Plus 3.1.2で**実際に動作確認したゲーム**の一覧と、
+遊ぶまでの手順です。ゲームは本体イメージやリリースには一切同梱していません。
 かわりに、**ご自分のマシン上で起動フロッピーを組み立てる**スクリプトを
 用意しています（取得は全てSHA256検証付き）。権利表記のない当時の
 ソフトについては、生成したディスクをご自身の私的利用の範囲でお使い
@@ -9,8 +9,8 @@ MZ-2500版CP/M 2.2で**実際に動作確認したゲーム**の一覧と、遊�
 
 ## 使い方（共通）
 
-Plus版では **Python 3とz80asm**が必要です。`make fetch`を実行してから
-作成してください。CP/M Plus上での各ゲームの動作は未検証です:
+**Python 3とz80asm**が必要です。`make fetch`を実行してから作成してください。
+生成されるのは現行CP/M Plus用の起動ディスクです:
 
 ```
 git clone https://github.com/zabaglione/cpm-mz2500.git
@@ -19,6 +19,10 @@ make fetch
 python3 tools/make_game_disk.py --list      # カタログ表示
 python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
 ```
+
+CP/M 2.2版や旧バージョンで生成済みのゲームD88は、現行Plus版とは
+システムトラックの配置が異なるため流用できません。上のスクリプトで
+作り直してください。`catchum`だけは後述の理由で現行版の生成を停止します。
 
 できあがったディスクは起動可能フロッピーです:
 
@@ -29,18 +33,26 @@ python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
   ブラウザ内に保存され、次回も続きから遊べます（別のディスクを入れる前に
   残したいものはFDスロットのSAVEボタンで書き出せます）
 - **実機で** — READMEの「実機で — フロッピー」の手順どおり書き込んで
-  起動し、`A>` に起動コマンドを入力
+  起動し、`A>` に起動コマンドを入力（今回の実機確認は未実施）
 
-## 2.2版での動作確認記録
+## CP/M Plus 3.1.2での確認結果
 
-| ビルド名 | タイトル（年） | ジャンル | 起動コマンド | 操作 |
+2026-09-21に、現行スクリプトで新規生成したD88をネイティブ版
+MZ-2500エミュレータで起動して確認しました。確認範囲は起動と表中の
+基本操作までです。ブラウザ版、実機、長時間プレイ、セーブ、ハイスコア、
+全ステージは今回の確認範囲に含みません。
+
+| ビルド名 | タイトル（年） | Plus 3.1.2での結果 | 起動コマンド | 操作 |
 |---|---|---|---|---|
-| `ladder` | Ladder (1982) | アクション | `LADDER` | W/A/S/D移動、SPACEジャンプ |
-| `catchum` | CatChum (1982) | アクション | `CATCHUM` | W/A/S/D移動 |
-| `rogue` | Rogue 1.7 (1985) | ローグライク | `ROGUE` | h/j/k/l移動（斜め y/u/b/n） |
-| `inthedark` | In The Dark (2022) | ローグライク | `ITDARK80` | w/a/s/d移動、q終了 |
-| `advent` | Colossal Cave Adventure | アドベンチャー | `ADVENTUR` | 英語2語コマンド入力 |
-| `flap` | FLAP CP/M | アクション | `FLAPCPM` | SPACEで飛ぶ、q終了 |
+| `ladder` | Ladder (1982) | 起動・プレイ開始OK | `LADDER` | W/A/S/D移動、SPACEジャンプ |
+| `catchum` | CatChum (1982) | **非対応（2.2版のみ）** | `CATCHUM` | W/A/S/D移動 |
+| `rogue` | Rogue 1.7 (1985) | 起動・移動/戦闘OK | `ROGUE` | h/j/k/l移動（斜め y/u/b/n） |
+| `inthedark` | In The Dark (2022) | 起動・終了OK | `ITDARK80` | w/a/s/d移動、q終了 |
+| `advent` | Colossal Cave Adventure | 起動・`HELP` OK | `ADVENTUR` | 英語2語コマンド入力 |
+| `flap` | FLAP CP/M | ANSIカラー起動OK | `FLAPCPM` | SPACEで飛ぶ、q終了 |
+| `2048` | 2048 | MT+コンパイル・カラー起動OK | `G2048` | W/A/S/D移動、ESC終了 |
+| `balls` | Balls | MT+コンパイル・カラー起動OK | `BALLS` | W/A/S/D移動、SPACE、ESC終了 |
+| `evas10n` | EVAS10N | MT+コンパイル・ANSIカラー起動OK | `EVAS10N` | z/x移動、q終了 |
 
 ### Ladder — ASCII版ドンキーコング
 
@@ -55,7 +67,21 @@ python3 tools/make_game_disk.py ladder      # 例: build/ladder.d88 が完成
 ### CatChum — ASCII版パックマン
 
 ドットを食べ尽くし、パワーエサで猫（`A`）に反撃する迷路アクション。
-Ladderと同じく端末・キー設定済み。`1`=1人プレイ、`C`=再設定（`CATCONF`）。
+同じファイルでCP/M 2.2版では動作しますが、現行Plus版では設定済み
+`CATCHUM.DAT`と`CATCONF.COM`を収録しても、`CATCHUM`が
+`CatChum not configured`、`Unable to link to CATCONF.COM`と表示して
+終了します。`CATCONF`を実行して設定を書き直した後も同じ結果でした。
+そのため、現行mainのビルダーは誤ったPlus用D88を生成せずエラーにします。
+
+過去のCP/M 2.2版を再現する場合だけ、アーカイブタグを別worktreeに展開します:
+
+```sh
+git worktree add ../cpm-mz2500-v1.3.2 v1.3.2
+cd ../cpm-mz2500-v1.3.2
+python3 tools/make_game_disk.py catchum
+```
+
+この手順で生成されるのはCP/M 2.2版であり、現行Plus版ではありません。
 
 ### Rogue 1.7 — ローグライクの原点
 
@@ -102,8 +128,8 @@ python3 tools/make_game_disk.py evas10n    # → build/evas10n.d88
 A>SUBMIT MAKE
 ```
 
-数分待つとMZがコンパイルとリンクを終えます（コンパイラの進行表示が
-流れるのを眺めるのも一興です）。以後は `G2048` と打つだけ。生成された
+コンパイルとリンクが完了するまで待ちます。以後は `G2048` と打つだけ。
+生成された
 G2048.COMはディスクに残るので、ビルドは初回のみです（ブラウザ版なら
 ブラウザ保存に残ります）。
 
@@ -128,8 +154,9 @@ z=左、x=右、qで終了。5色のレンガ帯を打ち抜いて脱出（Free!
 いずれもコンパイル済みの.COMはディスクに残るため、2回目以降は
 コマンド名を打つだけで起動します。
 
-**Zork I**（Infocom, 1982）— CP/M版（Release 25）が本機で動作すること
-を確認済みです（文章解析・データファイル読込とも問題なし）。ただし
+**Zork I**（Infocom, 1982）— CP/M 2.2版ではRelease 25の動作記録が
+ありますが、今回は対象バイナリがなかったため現行Plus版で再確認していません。
+ただし
 権利が現在も存続する商用作品のため、取得スクリプトは提供しません。
 正規の現行入手先は
 [GOG](https://www.gog.com/en/game/the_zork_anthology) /
@@ -142,8 +169,8 @@ z=左、x=右、qで終了。5色のレンガ帯を打ち抜いて脱出（Free!
 python3 tools/make_game_disk.py --local ZORK1.COM ZORK1.DAT --output build/zork1.d88
 ```
 
-（`--local` は手持ちの任意のCP/Mソフトをブータブルディスクにする
-汎用機能です）
+（`--local` は手持ちの任意のCP/Mソフトを現行Plusのブータブルディスクに
+追加する汎用機能です。このディスク生成と収録ファイルの読出しは確認済みです）
 
 ## 未検証（メモ）
 
@@ -159,6 +186,5 @@ python3 tools/make_game_disk.py --local ZORK1.COM ZORK1.DAT --output build/zork1
   ください。本機のコンソールはこの3系統の制御コードを解釈し、
   ANSIカラー（文字色8色。背景色は文字色が白/黒のとき反転表示で近似）
   にも対応しています
-- ゲーム中のキーがたまに効かないときは、もう一度押してください
-  （画面描画の最中に押されたキーはCP/M 2.2のBDOSが読み捨てることが
-  あります。当時からの仕様です）
+- ゲーム中のキーが反映されないときは、描画が落ち着いてからもう一度
+  押してください

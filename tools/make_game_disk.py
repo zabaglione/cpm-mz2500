@@ -116,6 +116,11 @@ GAMES = {
     "catchum": {
         "title": "CatChum (Yahoo Software, 1982)",
         "command": "CATCHUM",
+        "unsupported_reason": (
+            "CatChum is not supported by the current CP/M Plus disk: "
+            "CATCHUM reports 'CatChum not configured' and cannot link to "
+            "CATCONF.COM. Use tag v1.3.2 for the archived CP/M 2.2 build."
+        ),
         "files": [
             {"url": DERAMP + "CATCHUM.COM",
              "sha256": "290be6961c0ce655ed63f36005a020f30da38a0726add10dc04fee4c4e95b1dc",
@@ -682,7 +687,9 @@ def main() -> int:
 
     if args.list:
         for name, game in sorted(GAMES.items()):
-            print(f"{name:10s} {game['title']}  ->  {game['command']}")
+            status = (" [CP/M 2.2 only]"
+                      if game.get("unsupported_reason") else "")
+            print(f"{name:10s} {game['title']}{status}  ->  {game['command']}")
         for name, game in sorted(MTBUILD_GAMES.items()):
             print(f"{name:10s} {game['title']}  ->  SUBMIT MAKE")
         return 0
@@ -703,6 +710,9 @@ def main() -> int:
         build_mtbuild(args.game, output)
         return 0
     game = GAMES[args.game]
+    reason = game.get("unsupported_reason")
+    if reason:
+        parser.error(reason)
     files = {spec["name"]: game_file(args.game, spec)
              for spec in game["files"]}
     output = pathlib.Path(args.output
